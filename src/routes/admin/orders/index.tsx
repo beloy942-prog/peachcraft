@@ -47,6 +47,7 @@ function AdminOrdersPage() {
           setOrders((current) => [
             {
               id: raw.id as string,
+              order_number: (raw.order_number as string) ?? null,
               user_email: "Loading...",
               total_amount: raw.total_amount as number,
               status: raw.status as string,
@@ -54,7 +55,7 @@ function AdminOrdersPage() {
             },
             ...current,
           ]);
-          setNewOrderMessage(`New order ${(raw.id as string).slice(0, 8)} received!`);
+          setNewOrderMessage(`New order ${(raw.order_number as string ?? (raw.id as string).slice(0, 8))} received!`);
           window.setTimeout(() => setNewOrderMessage(null), 5000);
         },
       )
@@ -117,7 +118,7 @@ function AdminOrdersPage() {
             {filteredOrders.map((order) => (
               <div key={order.id} className="rounded-2xl bg-[var(--card)] p-4 shadow-soft">
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <span className="font-semibold text-sm text-[var(--foreground)]">#{order.id.slice(0, 8)}</span>
+                  <span className="font-semibold text-sm text-[var(--foreground)]">#{order.order_number ?? order.id.slice(0, 8)}</span>
                   <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold", statusColors[order.status] ?? "bg-[var(--card)] text-[var(--foreground)]")}>{order.status}</span>
                 </div>
                 <p className="text-xs text-[var(--foreground)]/70 truncate mb-1">{order.user_email}</p>
@@ -155,7 +156,7 @@ function AdminOrdersPage() {
               <tbody>
                 {filteredOrders.map((order) => (
                   <tr key={order.id} className="border-t border-[var(--border)]">
-                    <td className="px-5 py-4 font-semibold text-[var(--foreground)]">{order.id.slice(0, 8)}</td>
+                    <td className="px-5 py-4 font-semibold text-[var(--foreground)]">{order.order_number ?? order.id.slice(0, 8)}</td>
                     <td className="px-5 py-4 text-[var(--foreground)]/80 truncate max-w-[140px]">{order.user_email}</td>
                     <td className="px-5 py-4 text-[var(--foreground)]">₱{order.total_amount.toLocaleString("en-PH")}</td>
                     <td className="px-5 py-4">

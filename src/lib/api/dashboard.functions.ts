@@ -63,7 +63,7 @@ export const getDashboardData = createServerFn({ method: "GET" }).handler(async 
       .eq("is_active", true),
     supabase
       .from("orders")
-      .select("id,total_amount,status,user_id,created_at")
+      .select("id,order_number,total_amount,status,user_id,created_at")
       .order("created_at", { ascending: false }),
     supabase
       .from("products")
@@ -199,7 +199,7 @@ export const getDashboardData = createServerFn({ method: "GET" }).handler(async 
     activity.push({
       type: "new_order",
       title: "New order placed",
-      subtitle: `Order #${order.id.slice(0, 8)} by ${email}`,
+      subtitle: `Order #${order.order_number ?? order.id.slice(0, 8)} by ${email}`,
       time: timeAgo(order.created_at),
       badge: { label: "New Order", color: "bg-emerald-500/10 text-emerald-600" },
     });

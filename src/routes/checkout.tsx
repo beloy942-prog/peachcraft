@@ -39,11 +39,19 @@ export const Route = createFileRoute("/checkout")({
   }),
 });
 
-function generateDisplayOrderId(orderUuid: string): string {
-  const today = new Date();
-  const yyyymmdd = today.toISOString().slice(0, 10).replace(/-/g, "");
+// Deterministic fallback for pre-migration orders that lack a stored order_number.
+// Uses the order's created_at date (not the current client time) so it's reproducible.
+function fallbackDisplayOrderId(orderUuid: string, createdAt: string): string {
+  const date = new Date(createdAt);
+  const yyyymmdd = date.toISOString().slice(0, 10).replace(/-/g, "");
   const suffix = orderUuid.replace(/-/g, "").slice(0, 3).toUpperCase();
   return `PTT-${yyyymmdd}-${suffix}`;
+}
+
+/** Resolve the display order ID: prefer server-stored order_number, fall back to deterministic computation. */
+function resolveDisplayOrderId(order: { id: string; order_number?: string | null; created_at?: string }): string {
+  if (order.order_number) return order.order_number;
+  return fallbackDisplayOrderId(order.id, order.created_at ?? new Date().toISOString());
 }
 
 function CheckoutPage() {
@@ -167,7 +175,7 @@ function CheckoutPage() {
           if (order.payment_method === "gcash" && order.payment_status === "pending") {
             setPaymentMethod("gcash");
             setOrderId(order.id);
-            setDisplayOrderId(generateDisplayOrderId(order.id));
+            setDisplayOrderId(resolveDisplayOrderId(order));
             setStep(3);
           }
         })
@@ -198,7 +206,7 @@ function CheckoutPage() {
     },
     onSuccess: (result) => {
       setOrderId(result.id);
-      setDisplayOrderId(generateDisplayOrderId(result.id));
+      setDisplayOrderId(result.order_number ?? fallbackDisplayOrderId(result.id, new Date().toISOString()));
       queryClient.invalidateQueries({ queryKey: ["all-products"] });
       queryClient.invalidateQueries({ queryKey: ["featured-products"] });
       // Pre-fill GCash email from shipping email (for guests, gcashEmail may be empty)
@@ -298,7 +306,7 @@ function CheckoutPage() {
       });
       if (res && res.id) {
         setOrderId(res.id);
-        setDisplayOrderId(generateDisplayOrderId(res.id));
+        setDisplayOrderId(res.order_number ?? fallbackDisplayOrderId(res.id, new Date().toISOString()));
       }
       return true;
     } catch (error) {

@@ -79,7 +79,7 @@ function AdminOrderDetailPage() {
     <div className="space-y-6 sm:space-y-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.25em] text-[var(--foreground)]/70">Order #{data.id.slice(0, 8)}</p>
+          <p className="text-sm uppercase tracking-[0.25em] text-[var(--foreground)]/70">Order #{data.order_number ?? data.id.slice(0, 8)}</p>
           <h1 className="mt-2 text-2xl sm:text-4xl font-semibold text-[var(--foreground)]">Order details</h1>
         </div>
         <div className="self-start sm:self-auto rounded-3xl bg-[var(--card)] px-4 py-2.5 sm:px-5 sm:py-3 shadow-soft">

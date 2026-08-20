@@ -32,6 +32,7 @@ export type ProductFormData = {
 
 export type OrderSummary = {
   id: string;
+  order_number: string | null;
   user_email: string;
   total_amount: number;
   status: string;
@@ -48,6 +49,7 @@ export type OrderDetailItem = {
 
 export type OrderDetail = {
   id: string;
+  order_number: string | null;
   status: string;
   total_amount: number;
   created_at: string;
@@ -206,7 +208,7 @@ export const getAdminDashboardData = createServerFn({ method: "GET" }).handler(a
 
   const { data: recentOrders, error: recentOrdersError } = await supabase
     .from("orders")
-    .select("id,user_id,total_amount,status,created_at")
+    .select("id,order_number,user_id,total_amount,status,created_at")
     .order("created_at", { ascending: false })
     .limit(5);
 
@@ -236,6 +238,7 @@ export const getAdminDashboardData = createServerFn({ method: "GET" }).handler(a
     })),
     recentOrders: (recentOrders ?? []).map((order) => ({
       id: order.id,
+      order_number: order.order_number ?? null,
       user_email: userMap.get(order.user_id) ?? "Unknown",
       total_amount: order.total_amount,
       status: order.status,
@@ -294,7 +297,7 @@ export const getAdminNotifications = createServerFn({ method: "GET" }).handler(a
   if (pendingOrders && pendingOrders > 0) {
     const { data: recentPending } = await supabase
       .from("orders")
-      .select("id,created_at")
+      .select("id,order_number,created_at")
       .eq("status", "pending")
       .order("created_at", { ascending: false })
       .limit(5);
@@ -304,7 +307,7 @@ export const getAdminNotifications = createServerFn({ method: "GET" }).handler(a
         id: `pending-${order.id}`,
         type: "pending_order",
         title: "Pending order",
-        subtitle: `Order #${order.id.slice(0, 8)} awaiting processing`,
+        subtitle: `Order #${order.order_number ?? order.id.slice(0, 8)} awaiting processing`,
         link: `/admin/orders/${order.id}`,
         created_at: order.created_at,
       });
@@ -541,6 +544,20 @@ export const createOrder = createServerFn({ method: "POST" })
       throw orderError ?? new Error("Failed to create order.");
     }
 
+    // Generate human-readable order_number (PTT-YYYYMMDD-XXX) and persist it
+    const { data: updatedOrder, error: updateOrderError } = await supabase
+      .from("orders")
+      .update({ order_number: generateOrderId(order.id, new Date().toISOString()) })
+      .eq("id", order.id)
+      .select("order_number")
+      .single();
+
+    if (updateOrderError || !updatedOrder) {
+      // Non-fatal: order was created, but order_number failed to persist.
+      // Fall back to client-computed value for now.
+      console.error("Failed to persist order_number:", updateOrderError);
+    }
+
     const orderItems = data.items.map((item) => ({
       order_id: order.id,
       product_id: item.product_id,
@@ -556,7 +573,7 @@ export const createOrder = createServerFn({ method: "POST" })
       throw itemsError;
     }
 
-    return { id: order.id };
+    return { id: order.id, order_number: updatedOrder?.order_number ?? null };
   });
 
 function generateOrderId(orderUuid: string, createdAt: string): string {
@@ -865,7 +882,7 @@ export const getAdminPaymentsPendingOrders = createServerFn({ method: "GET" })
 
     const { data: orders, error } = await supabase
       .from("orders")
-      .select("id, total_amount, status, payment_status, shipping_address, created_at, user_id")
+      .select("id,order_number,total_amount,status,payment_status,shipping_address,created_at,user_id")
       .eq("payment_method", "gcash")
       .eq("payment_status", "pending")
       .order("created_at", { ascending: false });
@@ -919,6 +936,7 @@ export const getAdminPayment = createServerFn({ method: "GET" })
       .select(`
         *,
         orders!inner (
+          order_number,
           total_amount,
           status,
           payment_status,
@@ -1186,7 +1204,7 @@ export const getOrdersList = createServerFn({ method: "GET" }).handler(async () 
   const supabase = getSupabaseServer();
   const { data: orders, error } = await supabase
     .from("orders")
-    .select("id,user_id,total_amount,status,created_at")
+    .select("id,order_number,user_id,total_amount,status,created_at")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -1207,6 +1225,7 @@ export const getOrdersList = createServerFn({ method: "GET" }).handler(async () 
 
   return (orders ?? []).map((order) => ({
     id: order.id,
+    order_number: order.order_number ?? null,
     user_email: userMap.get(order.user_id) ?? "Unknown",
     total_amount: order.total_amount,
     status: order.status,
@@ -1221,7 +1240,7 @@ export const getOrderDetails = createServerFn({ method: "GET" })
     const supabase = getSupabaseServer();
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id,status,total_amount,shipping_address,created_at,user_id")
+      .select("id,order_number,status,total_amount,shipping_address,created_at,user_id")
       .eq("id", data.id)
       .single();
 
@@ -1285,6 +1304,7 @@ export const getOrderDetails = createServerFn({ method: "GET" })
 
     return {
       id: order.id,
+      order_number: order.order_number ?? null,
       status: order.status,
       total_amount: order.total_amount,
       created_at: order.created_at,
@@ -1930,7 +1950,7 @@ export const getCustomerOrders = createServerFn({ method: "POST" })
     const { data: orders, error } = await supabase
       .from("orders")
       .select(`
-        id,status,total_amount,created_at,shipping_address,payment_method,payment_status,
+        id,order_number,status,total_amount,created_at,shipping_address,payment_method,payment_status,
         order_items(
           id,qty,price_at_purchase,
           product_id,
@@ -1944,6 +1964,7 @@ export const getCustomerOrders = createServerFn({ method: "POST" })
 
     return (orders ?? []).map((o) => ({
       id: o.id,
+      order_number: o.order_number ?? null,
       status: o.status,
       total_amount: o.total_amount,
       created_at: o.created_at,
@@ -1985,7 +2006,7 @@ export const getCustomerOrderById = createServerFn({ method: "POST" })
     const supabase = getSupabaseServer();
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id,status,total_amount,payment_method,payment_status,shipping_address,user_id")
+      .select("id,order_number,status,total_amount,created_at,payment_method,payment_status,shipping_address,user_id")
       .eq("id", data.orderId)
       .single();
 
@@ -1999,8 +2020,10 @@ export const getCustomerOrderById = createServerFn({ method: "POST" })
 
     return {
       id: order.id,
+      order_number: order.order_number ?? null,
       status: order.status,
       total_amount: order.total_amount,
+      created_at: order.created_at,
       payment_method: order.payment_method,
       payment_status: order.payment_status,
       shipping_address: order.shipping_address as Record<string, string> | null,
@@ -2021,7 +2044,7 @@ export const getGuestOrder = createServerFn({ method: "POST" })
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id,status,total_amount,payment_method,payment_status,shipping_address,user_id")
+      .select("id,order_number,status,total_amount,payment_method,payment_status,shipping_address,user_id")
       .eq("id", data.orderId)
       .single();
 
@@ -2042,6 +2065,7 @@ export const getGuestOrder = createServerFn({ method: "POST" })
 
     return {
       id: order.id,
+      order_number: order.order_number ?? null,
       status: order.status,
       total_amount: order.total_amount,
       payment_method: order.payment_method,

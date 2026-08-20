@@ -38,7 +38,7 @@ function AdminOrderTrackingPage() {
     if (!data) return [];
     const q = search.toLowerCase().trim();
     return data.filter((order) => {
-      if (q && !order.id.toLowerCase().includes(q) && !order.user_email.toLowerCase().includes(q)) {
+      if (q && !order.id.toLowerCase().includes(q) && !order.user_email.toLowerCase().includes(q) && !(order.order_number ?? "").toLowerCase().includes(q)) {
         return false;
       }
       return true;
@@ -88,7 +88,7 @@ function AdminOrderTrackingPage() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex items-center gap-3">
-                    <span className="font-semibold text-[var(--foreground)]">#{order.id.slice(0, 8)}</span>
+                    <span className="font-semibold text-[var(--foreground)]">#{order.order_number ?? order.id.slice(0, 8)}</span>
                     <span className={cn("inline-flex rounded-full px-3 py-1 text-xs font-semibold", statusColors[order.status] ?? "bg-[var(--card)] text-[var(--foreground)]")}>{order.status}</span>
                   </div>
                   <p className="mt-1 text-sm text-[var(--foreground)]/70">{order.user_email}</p>

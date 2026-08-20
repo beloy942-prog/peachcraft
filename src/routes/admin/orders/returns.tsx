@@ -62,7 +62,7 @@ function AdminReturnsPage() {
             <tbody>
               {returns.map((order) => (
                 <tr key={order.id} className="border-t border-[var(--border)]">
-                  <td className="px-5 py-4 font-semibold text-[var(--foreground)]">{order.id.slice(0, 8)}</td>
+                  <td className="px-5 py-4 font-semibold text-[var(--foreground)]">{order.order_number ?? order.id.slice(0, 8)}</td>
                   <td className="px-5 py-4 text-[var(--foreground)]/80">{order.user_email}</td>
                   <td className="px-5 py-4 text-[var(--foreground)]">₱{order.total_amount.toLocaleString("en-PH")}</td>
                   <td className="px-5 py-4">

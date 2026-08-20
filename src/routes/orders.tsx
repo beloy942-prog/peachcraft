@@ -19,6 +19,7 @@ type OrderItem = {
 
 type Order = {
   id: string;
+  order_number: string | null;
   status: string;
   total_amount: number;
   created_at: string;
@@ -52,8 +53,10 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Canceled",
 };
 
-function formatOrderId(id: string): string {
-  const raw = id.replace(/-/g, "").toUpperCase();
+/** Display order number: prefer server-stored order_number, fall back to UUID-based format. */
+function displayOrderId(order: { id: string; order_number?: string | null }): string {
+  if (order.order_number) return order.order_number;
+  const raw = order.id.replace(/-/g, "").toUpperCase();
   const prefix = raw.slice(0, 3);
   const suffix = raw.slice(-5);
   return `CTH-${prefix}${suffix}`;
@@ -223,7 +226,7 @@ function OrdersPage() {
                       </div>
                       <div>
                         <p className="text-[15px] font-medium text-gray-900 tracking-tight">
-                          {formatOrderId(order.id)}
+                          {displayOrderId(order)}
                         </p>
                         <p className="text-[12px] text-gray-400 font-medium">Order</p>
                       </div>

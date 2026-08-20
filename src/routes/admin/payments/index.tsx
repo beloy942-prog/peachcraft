@@ -172,7 +172,7 @@ function AdminPaymentsPage() {
               <tbody>
                 {pendingOrdersQuery.data?.orders?.map((order) => (
                   <tr key={order.id} className="border-t border-border hover:bg-muted/30">
-                    <td className="p-4 font-mono text-xs">{order.id.slice(0, 8)}</td>
+                    <td className="p-4 font-mono text-xs">{order.order_number ?? order.id.slice(0, 8)}</td>
                     <td className="p-4">₱{Number(order.total_amount).toLocaleString()}</td>
                     <td className="p-4 text-foreground/70">{formatDate(order.created_at)}</td>
                     <td className="p-4">
@@ -223,7 +223,7 @@ function AdminPaymentsPage() {
             <tbody>
               {currentPayments.map((payment: any) => (
                 <tr key={payment.id} className="border-t border-border hover:bg-muted/30">
-                  <td className="p-4 font-mono text-xs">{payment.order_id.slice(0, 8)}</td>
+                  <td className="p-4 font-mono text-xs">{payment.orders?.order_number ?? payment.order_id.slice(0, 8)}</td>
                   <td className="p-4">₱{Number(payment.orders?.total_amount ?? 0).toLocaleString()}</td>
                   <td className="p-4 max-w-[160px] truncate" title={payment.customer_email}>
                     {payment.customer_email}
