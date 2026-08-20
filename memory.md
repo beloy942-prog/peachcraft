@@ -1,161 +1,306 @@
-# Peach Craft — System Memory
+# Peach Craft — System Memory (AI Reference)
 
-Dense reference for the Peach Craft storefront + admin. Traceable to files; treat
-anything marked `[verify]` as unconfirmed in the last inspection pass, not as fact.
+Dense, traceable reference for the Peach Craft storefront + admin (React 19 /
+TanStack Start / Supabase / Cloudflare R2 / Vercel). Written for AI agents to
+reconstruct working context fast. Every claim maps to a file:line; `[verify]`
+marks something not confirmed in the last inspection pass. **Update this file
+after every working session** — it is the authoritative session state.
 
 ---
 
 ## 1. Overview & Tech Stack
 
-- **App**: Peach Craft — PHP-first kawaii clay/craft e-commerce storefront + admin panel.
+- **App**: Peach Craft — kawaii clay/craft e-commerce storefront + admin panel.
 - **Framework**: TanStack Start v1.167.50 (file-based routing, SSR) + React 19.2 + Vite 7.3.
-- **Wiring**: `@lovable.dev/vite-tanstack-config` v2.3.1 wraps TanStack/Vite/Tailwind/nitro. `vite.config.ts` only sets `nitro: { preset: "vercel" }`, `tanstackStart.server.entry: "server"`, port 3000. Do NOT add TanStack/React/Tailwind plugins manually — the wrapper already does (comment in `vite.config.ts:1-6`).
-- **Data access**: no ORM — direct `@supabase/supabase-js` v2.107.0 queries. Sessions via `@supabase/ssr` v0.10.3.
-- **Client libs**: React Query v5.83, zod 3.24 (server-fn input validators), Tailwind 4.2 (`@tailwindcss/vite`), shadcn/ui (new-york, slate, cssVariables, lucide — `components.json`), recharts (admin charts), sonner (toasts), vaul, lucide-react, `browser-image-compression` (client image resize before upload).
-- **Backend services** (all validated reachable in the last check):
-  - Supabase Postgres + Auth (GoTrue v2.190.0) + Storage.
-  - Cloudflare R2 (file objects; API token auth; S3 endpoint exists but is not used by app code).
-  - Cloudflare Turnstile (bot check on signup / checkout).
-  - Resend (email) — connectivity validated; app-side usage location `[verify]`.
-  - Host: Vercel (nitro preset `vercel`).
-- **Currency**: PHP is base; `src/lib/currency.ts` — 10 currencies, hardcoded static `CONVERSION_RATES`, `formatBasePrice` → `₱… PHP`, JPY/KRW rounded to 0 decimals.
-- **Scripts** (`package.json`): `dev` = `vite dev` (port 3000 strict), `build` = `vite build`, `preview`, `lint` = `eslint .`, `format` = `prettier --write .`.
+- **Build wiring**: `@lovable.dev/vite-tanstack-config` v2.3.1 wraps TanStack/Vite/Tailwind/nitro. `vite.config.ts` only sets `nitro: { preset: "vercel" }`, `tanstackStart.server.entry: "server"`, port 3000. **Do NOT add TanStack/React/Tailwind plugins manually** — the wrapper already does (`vite.config.ts:1-6`).
+- **Data access**: no ORM — direct `@supabase/supabase-js` v2.107.0 queries from server functions. Sessions via `@supabase/ssr` v0.10.3.
+- **All runtime deps** (`package.json`): `@hookform/resolvers`, radix-ui primitives (full set), `@supabase/ssr`, `@supabase/supabase-js`, `@tailwindcss/vite`, `@tanstack/react-query`, `@tanstack/react-router`, `@tanstack/react-start`, `@tanstack/router-plugin`, `browser-image-compression`, `class-variance-authority`, `clsx`, `cmdk`, `date-fns`, `embla-carousel-react`, `input-otp`, `lucide-react`, `react`, `react-dom`, `react-hook-form`, `react-resizable-panels`, `recharts`, `sonner`, `tailwind-merge`, `tailwindcss`, `tw-animate-css`, `vaul`, `vite-tsconfig-paths`, `zod`.
+- **Dev deps**: `@lovable.dev/vite-tanstack-config`, `nitro` (3.0.260429-beta), `vite` 7.3.1, `typescript` 5.8.3, `eslint` 9.x, `prettier`, `@vitejs/plugin-react`.
+- **Scripts**: `dev` = `vite dev` (port 3000 **strict**), `build` = `vite build` (nitro `vercel` preset → `.vercel/output`), `build:dev` = dev-mode build, `preview`, `lint` = `eslint .`, `format` = `prettier --write .`.
+- **Backend services** (reachable, verified live):
+  - Supabase Postgres + Auth (GoTrue) + Storage.
+  - Cloudflare R2 (object storage via REST API; verified 200 on PUT).
+  - Cloudflare Turnstile (CAPTCHA: signup + checkout + login).
+  - Resend (email) — key optional; app-side usage site `[verify]`.
+  - Host: Vercel (nitro preset).
+- **Currency**: PHP base; `src/lib/currency.ts` — 10 currencies, hardcoded static `CONVERSION_RATES`, `formatBasePrice` → `₱… PHP`; JPY/KRW round to 0 decimals.
 
 ---
 
 ## 2. Architecture, Routing & Build
 
-- **Custom SSR entry** `src/server.ts` (wired via `tanstackStart.server.entry`): imports `./lib/error-capture`, then:
-  - `fetch()` handles `/api/images/*` (R2 image proxy, see §7) before handing off to `@tanstack/react-start/server-entry`.
-  - Wraps every response with security headers (`server.ts:40-76`): CSP, HSTS, nosniff, X-Frame-Options DENY, Referrer-Policy.
-  - `normalizeCatastrophicSsrResponse` (`server.ts:23-38`): h3 swallows in-handler throws into `{"unhandled":true,"message":"HTTPError"}` JSON 500s — this detects that shape and replaces with `renderErrorPage()` from `src/lib/error-page.ts`.
-- **Routing** (`src/routes/README.md`): every `.tsx` in `src/routes/` is a route. Never create `src/pages/` or `app/layout.tsx`. `routeTree.gen.ts` is auto-generated — don't edit.
-- **Route tree** (`src/routes/`):
-  - `__root.tsx` — app shell wrapping every page (keep `<Outlet />`); `ErrorComponent` logs via `console.error`.
-  - Public: `index.tsx` (home; hero gradient untouched, section backgrounds white), `about.tsx`, `cart.tsx`, `login.tsx`, `signup.tsx`, `checkout.tsx`, `order-confirmation.tsx`, `shop/index.tsx`, `shop/$category.tsx`, `shop/$id.tsx` (product detail), `account/*`, `$.tsx` (404).
-  - Admin: `admin/index.tsx` (dashboard/analytics), `admin/products/`, `admin/orders/`, `admin/payments/`, `admin/customers/` — all guarded by `src/lib/adminMiddleware.ts` + server-side `verifyAdmin()`.
-- **Query/client plumbing**: React Query v5 is used for admin/storefront server-fn data; provider setup location `[verify]` (likely `__root.tsx` or a lib module). Client supabase singleton lives on `window.__peachcraft_supabase` (`src/lib/supabase.ts`).
-- **Build caveat**: at current HEAD `2236181`, `vite.config.ts` still sets `server.entry: "server"` and there is **no** `vercel.json`. This exact shape has an open Vercel 500 issue (see §9 Known Issue #2).
+### SSR entry & response handling
+- `src/server.ts` (wired via `tanstackStart.server.entry`):
+  - `normalizeCatastrophicSsrResponse` (`:23-38`) — h3 swallows in-handler throws into `{"unhandled":true,"message":"HTTPError"}` JSON 500s; this fn detects that shape and replaces with `renderErrorPage()` from `src/lib/error-page.ts` (no stack leaks).
+  - `fetch()` intercepts `/api/images/*` (R2 image proxy, §7) then delegates to `@tanstack/react-start/server-entry`.
+  - Security headers on every response (`:40-76`): CSP, HSTS, nosniff, `X-Frame-Options: DENY`, `Referrer-Policy`.
+- **Routing rules** (`src/routes/README.md`): every `.tsx` under `src/routes/` is a route. Never create `src/pages/` or `app/layout.tsx`. `routeTree.gen.ts` is auto-generated — never edit.
+
+### Full route map (from `src/routes/`)
+- **Shell**: `__root.tsx` (app shell, keeps `<Outlet />`, `ErrorComponent` logs `console.error`).
+- **Storefront public**:
+  - `index.tsx` — home (hero gradient preserved; **section backgrounds are white** per latest design).
+  - `shop.tsx` — shop layout shell; `shop/index.tsx` — grid + **availability filter + sort** (see §8 for the sort bug); `shop/$category.tsx`; `shop/$id.tsx` — product detail (Add to cart / **Buy it now**, see §9 M6).
+  - `search.tsx` — live search via `searchProducts`.
+  - `cart.tsx`, `checkout.tsx` (3-step state machine, §8), `order-confirmation.tsx`.
+  - `login.tsx`, `signup.tsx`, `verify-email.tsx`, `profile.tsx`, `orders.tsx`, `account/*`.
+  - `about.tsx`, `contact.tsx` (**form is decorative — §9 M3**), `shipping-policy.tsx`.
+  - `$.tsx` — 404.
+- **Admin** (guarded by `src/lib/adminMiddleware.ts` + server `verifyAdmin()`):
+  - `admin.tsx` — layout; `admin/index.tsx` — dashboard (crashes — §9 #1); `admin/analytics.tsx`.
+  - `admin/products/index.tsx`, `admin/products/new.tsx`, `admin/products/$id.tsx` (+ `src/components/admin/products/`).
+  - `admin/orders/index.tsx`, `admin/orders/$id.tsx`, `admin/orders/tracking.tsx`, `admin/orders/returns.tsx`.
+  - `admin/payments/index.tsx` (list + approve/reject; **XSS render site — §9 #3**).
+  - `admin/customers/index.tsx`, `admin/website-settings.tsx` (store details + **GCash fields**).
+- **Query/client plumbing**: React Query v5 for admin/storefront data. Client Supabase singleton on `window.__peachcraft_supabase` (`src/lib/supabase.ts`). React Query provider file `[verify]`.
+
+### Build & deploy facts
+- `vite build` succeeds locally (nitro vercel preset), emitting `.vercel/output/`.
+- **`.vercel/output/**` IS TRACKED IN GIT.** Before committing source, discard build changes: `git checkout -- .vercel/output`.
+- `npx tsc --noEmit` is the typecheck gate (currently clean at HEAD `9fb0966`).
+- **Vercel 500 is OPEN** (§9 #2): deployed `_ssr/index.mjs` imports `/var/task/_ssr/server-CUcuYyFi.mjs` which never exists; local build produces a different valid hash. Not a stale-cache issue (same hash across redeploys).
+- SSR smoke test 2026-08-20: all public routes 200; `/admin*` 307 (redirect to login) without admin session — correct.
 
 ---
 
 ## 3. Data Model (Supabase)
 
-- **Base tables** created in the Supabase dashboard (documented in `Fully-Detailed-Schema.md` + `supabase-current-schema.md`):
-  - `products` — `name, price, description, images[] (jsonb), tag, swatch, category, stock_qty, is_active, created_at, brand`.
-  - `orders` — `user_id, total_amount, status (pending/confirmed/…), shipping_address, payment_method, payment_status (pending|paid|awaiting_verification|failed), created_at`.
-  - `order_items` — `order_id, product_id, qty, price_at_purchase`.
-  - `gcash_payments` — `order_id, gcash_reference_number (UNIQUE), screenshot_url, customer_email, status (pending|verified|rejected), verified_at`.
-  - `users`, `profiles`.
-- **Migration-created tables** (`sql/migrations/001-005`):
-  - `001`: `signup_attempts` (IP rate limit), `carts`.
-  - `002`: `cart_items`.
-  - `003`: `cart_add_attempts`.
-  - `004`: RLS on carts; `gcash_payments`.
-  - `005`: `login_attempts`, `order_attempts`.
-- **Constraints**: `gcash_reference_number` unique (app also catches PG error `23505`). RLS on carts.
-- **Order ID** displayed to customers: `PTT-yyyymmdd-XXX` from `generateOrderId(orderUuid, createdAt)` (`supabase.functions.ts:583-588`) — UUID suffix first 3 hex chars uppercased.
+### Base tables (created in dashboard; docs in `Fully-Detailed-Schema.md` + `supabase-current-schema.md`)
+- `products` — `id uuid pk, name, price numeric, description text, images jsonb[], tag, swatch, category, stock_qty int, is_active bool, created_at, brand`.
+- `orders` — `id uuid pk, user_id uuid (NULLABLE — live data has NULLs), total_amount numeric, status (pending|confirmed|shipped|delivered|cancelled), shipping_address jsonb, payment_method (cash_on_delivery|gcash|null), payment_status (pending|paid|awaiting_verification|failed|null), created_at`.
+- `order_items` — `order_id → orders (cascade), product_id → products, qty, price_at_purchase`.
+- `gcash_payments` — `id, order_id → orders, gcash_reference_number (UNIQUE), screenshot_url, customer_email, status (pending|verified|rejected), submitted_at, verified_at`.
+- `users` (auth), `profiles` — `id → auth.users (FK fk_profiles_auth_user — CANNOT insert fake ids), email, username, address, email_verified bool, created_at`.
+
+### Migration-created tables (`sql/migrations/001-006`)
+- `001`: `signup_attempts` (IP rate limit 5/hr), `carts` (`user_id` NOT NULL unique, `items jsonb`).
+- `002`: `cart_items` (`user_id, product_id, qty`, unique per user+product).
+- `003`: `cart_add_attempts` (rate limit).
+- `004`: RLS on carts + `gcash_payments` support (order `payment_method`/`payment_status`).
+- `005`: `login_attempts` (**columns: `ip` + nullable `user_id` + `created_at` — NO `email` column**), `order_attempts` (`ip`, `user_id`).
+- `006` (`006_add_gcash_settings.sql`, NEW, **COMMITTED BUT NOT APPLIED to Supabase**): adds `gcash_number`, `gcash_account_name`, `gcash_qr` to `website_settings`. Until applied, admin GCash settings save fails with column-not-found.
+
+### Constraints & gotchas
+- `gcash_reference_number` UNIQUE (app catches PG `23505`).
+- RLS: enabled on `carts` (insert/select where `user_id = auth.uid()`); server fns use service-role client (`getSupabaseServer()`) so RLS is bypassed server-side.
+- **Live data reality (2026-08-20): 6 of 7 `orders` have `user_id = NULL`** — manually inserted test data, NOT created through the app. App-created orders always set `user_id`. Effects:
+  - `submitGCashProof` / `getCustomerOrderById` reject these (ownership `null !== userId`) — correct behavior, not a bug.
+  - Admin `getOrderDetails` must tolerate null `user_id` (fixed — §5).
+- `profiles.id` has `FK → auth.users`, so E2E tests must use a **real** auth user (e.g. `testing@gmail.com` = `f6341218-3d1d-404c-b8e9-ae3f399641b6`, verified, 0 active orders).
+- `website_settings` singleton row: `id = 'singleton'`, currently has `store_name` etc. — no gcash columns until 006 applied.
 
 ---
 
 ## 4. Authentication & Admin Authorization
 
-- **Client**: `getSupabaseClient()` in `src/lib/supabase.ts` (browser singleton). `clearAuthCookies()` for sign-out.
-- **Server**: `getSupabaseServer(accessToken?, { authOnly })` — `authOnly: true` creates a client that cannot persist cookies; use it for token-verified calls.
-- **Session context**: `src/lib/auth-context.tsx` `AuthProvider` — 5s timeout on session resolution, `validSession` 24h expiry buffer; invalid/expired tokens handled as a graceful state, never a crash.
-- **Admin gate — THE authoritative check** is server-side `verifyAdmin()` in `src/lib/api/admin-auth.ts`:
-  - With `accessToken`: `authClient.auth.getUser(token)` then email must equal `ADMIN_EMAIL`.
-  - Without `accessToken` (all GET admin fns): detects the request from TanStack Start AsyncLocalStorage context, builds a `createServerClient` with cookie `getAll()`, reads the session via `supabase.auth.getUser()`. **This cookie-fallback path is the current working fix (uncommitted working-tree change).**
-  - Client-side admin checks are cosmetic only (show/hide UI).
-- **Route guard**: `src/lib/adminMiddleware.ts` used by admin routes.
-- **Login**: `src/routes/login.tsx` sets `sb-admin-token` cookie; `sanitizeRedirect` accepts **same-origin relative paths only** (rejects full URLs and `//`).
-- **Signup**: `signUpWithProfile` (`supabase.functions.ts:1621+`) — Turnstile verify (if token provided), IP rate-limit `signup_attempts` 5/hr (`MAX_PER_HOUR = 5`), zod validation (email, password ≥8, username 2-50, address 5-200).
-- **Server-only env**: `src/lib/config.server.ts` patterns; admin email/id/auth identifiers are never in client-bundled `VITE_*` vars.
+### Clients
+- **Client**: `getSupabaseClient()` (`src/lib/supabase.ts`) — browser singleton on `window.__peachcraft_supabase`; `clearAuthCookies()` on sign-out.
+- **Server**: `getSupabaseServer(accessToken?, { authOnly })` — `authOnly: true` creates a client that CANNOT persist cookies; used for token-verified calls. Plain `getSupabaseServer()` = service-role client (bypasses RLS).
+- **Session context**: `src/lib/auth-context.tsx` `AuthProvider`:
+  - `withTimeout(promise, ms, msg)` helper (`:19`).
+  - Session resolution 5s timeout; `validSession` 24h expiry buffer.
+  - Invalid/expired tokens = graceful state (never logout loop, never crash).
+
+### Admin authorization (the authoritative gate)
+- **Server-side `verifyAdmin()`** in `src/lib/api/admin-auth.ts`:
+  - With `accessToken`: `authClient.auth.getUser(token)` then **email must equal `process.env.ADMIN_EMAIL`**.
+  - Without token (all GET admin fns): reads the session from request cookies via AsyncLocalStorage → `createServerClient` with `getAll()` → `supabase.auth.getUser()`. **This cookie path is COMMITTED** (was the fix; `login.tsx` sets the `sb-admin-token` cookie).
+  - Client-side admin checks (email === `VITE_ADMIN_EMAIL`) are **cosmetic only**.
+- **Route guard**: `src/lib/adminMiddleware.ts` — server middleware on admin routes.
+- **Admin credentials**: email `admin@peachcraft.com`. **Password is a Supabase Auth credential — never stored in repo; reset via Supabase Auth → Users.**
+- **Login**: `login.tsx` — Turnstile + `verifyLoginAttempt` (5/hr per IP via `login_attempts`) + `recordLoginFailure` (inserts `{ ip }` only) + `sanitizeRedirect` (**same-origin relative paths only; rejects full URLs and `//`**).
+- **Signup**: `signUpWithProfile` (`supabase.functions.ts:1625+`) — Turnstile (if token), IP rate limit `signup_attempts` 5/hr, zod: email, password ≥8, username 2-50, address 5-200.
 
 ---
 
-## 5. Server Functions & Core Business Logic
+## 5. Server Functions Catalog (`src/lib/api/`)
 
-All core server functions live in `src/lib/api/supabase.functions.ts` (2333 lines), declared as `createServerFn({ method })` with `.inputValidator(z.object(...))` (zod) — validation happens at the server boundary.
+Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (server-boundary validation). Call sites pass `{ data: {...} }`. **No payload/validator mismatches found** in the 2026-08-20 audit.
 
-- **`createOrder`** (`:384+`) — checkout order creation:
-  - Validates items, shipping address, payment method, `total_amount`, `accessToken`, `turnstileToken`, `ip`.
-  - Requires authenticated user; records order attempt for IP rate-limiting (best-effort, `order_attempts`).
-  - Enforces one active order rule (TOCTOU-prone, see §9 #5).
-  - **Stock reservation is atomic-ish**: per-item `.gte("stock_qty", qty)` conditional update; on ANY failure rolls back previously deducted stock via `restoreStock()` helper; order insert failure also rolls back.
-  - Inserts `orders` + `order_items` (`price_at_purchase` taken from client input — see §9 #4).
-- **`searchProducts` / `getAutocompleteSuggestions`** (`src/lib/api/search.functions.ts`): fully in-memory JS search over active products. Tokenizes, uses Levenshtein + weighted scoring (name 10, category 6, brand 6, tag 4, description 2) + log-scaled popularity boost; no pg_trgm/TS. Virtual brands from `getVirtualBrand()` (`Kawaii Deco`, `Clay Dream`, `Strawberry Fields`, else `Peach Craft`).
-- **Admin reads** (all `GET`, all call `verifyAdmin()` with the cookie path): `getAdminProducts` (`:956`), `getOrdersList` (`:1203`), `getAnalyticsData` (`:1373`), `getAdminPayments` (`:840`).
-- **Cart sync** (`src/lib/cart.ts`): localStorage key `peachcraft-cart`, cross-tab event `peachcraft-cart-updated`; `saveCartForUser` / `getCartForUser` sync to DB when logged in. Enforces max 25 units/product and stock limits client-side.
-- **Other fns** in the same module: `uploadProductImage`, `uploadPaymentProof`, `submitGCashProof`, `verifyGCashPayment`, `checkDuplicateReference` (see §6–§7), plus profile/account handlers.
+### `supabase.functions.ts` (~2337 lines)
+| Function | Line | Method | Key behavior |
+|---|---|---|---|
+| `getFeaturedProducts` | 122 | GET | active products tagged featured |
+| `getAllProducts` | 138 | GET | active products, ordered |
+| `getAdminDashboardData` | 153 | GET | (uncalled — dead) |
+| `getAdminNotifications` | 264 | GET | low-stock + pending-payment counts |
+| `getUserActiveOrderStatus` | 338 | POST | any order in pending/confirmed/shipped for user |
+| `createOrder` | 384 | POST | see §6; **trusts client amounts — §9 #4** |
+| `uploadPaymentProof` | 609 | POST | magic bytes + ≤10MB → R2 (payment-proofs/) |
+| `checkDuplicateReference` | 686 | GET | gcash ref already used (not rejected) |
+| `submitGCashProof` | 701 | POST | dup check, ownership, method/status; insert payment + flip order |
+| `verifyGCashPayment` | 784 | POST | admin; approve/reject; idempotent on `pending` guard |
+| `getAdminPayments` | 840 | GET | payments + inner join orders |
+| `getAdminPaymentsPendingOrders` | 880 | GET | gcash + pending |
+| `getAdminPaymentSummary` | 896 | GET | 4 counts |
+| `getAdminPayment` | 930 | GET | single payment + order |
+| `getAdminProducts` | 956 | GET | **selects fewer fields than type → thumbnails/tag-search broken (§9 L7)** |
+| `toggleProductActive` | 971 | POST | admin |
+| `deleteProduct` | 989 | POST | deletes images from R2/Supabase storage then row |
+| `getProductById` | 1100 | POST | full product row |
+| `createProduct` | 1117 | POST | admin insert |
+| `updateProduct` | 1159 | POST | admin update |
+| `getOrdersList` | 1203 | GET | admin; maps `user_email` via profiles (Unknown if none) |
+| `getOrderDetails` | 1236 | GET | admin; **FIXED: `let user=null; if(order.user_id){…maybeSingle()}` — no throw on null/missing profile** |
+| `updateOrderStatus` | 1319 | POST | admin; **restores stock when status → cancelled** |
+| `getAnalyticsData` | 1377 | GET | 30-day revenue series, status counts, top products, growth |
+| `uploadProductImage` | 1550 | POST | magic bytes → R2 (public/) |
+| `signUpWithProfile` | 1625 | POST | Turnstile + rate limit + insert profile |
+| `validateCartItems` | 1788 | POST | returns available/unavailable lists |
+| `saveCartForUser` | 1829 | POST | upsert `carts` on `user_id` |
+| `getCartForUser` | 1869 | POST | read cart items |
+| `getMyOrders` | 1895 | POST | user orders (short) |
+| `getCustomerOrders` | 1932 | POST | user orders + items + product names/images |
+| `getCustomerOrderById` | 1982 | POST | ownership-guarded order fetch (resume) |
+| `cancelCustomerOrder` | 2029 | POST | ownership; **restores stock**; status → cancelled |
+| `verifyEmail` | 2092 | POST | token/email verification |
+| `checkEmailVerification` | 2144 | POST | |
+| `updateProfile` | 2162 | POST | username 2-50, address 5-200 |
+| `changePassword` | 2217 | POST | |
+| `checkIsAdmin` | 2278 | POST | |
+| `verifyLoginAttempt` | 2289 | POST | 5/hr per IP |
+| `recordLoginFailure` | 2324 | POST | insert `{ ip }` |
+
+### Other modules
+- `storeDetails.functions.ts` — `uploadStoreImage` (`:23`), `getStoreDetails` (`:74`), `updateStoreDetails` (`:86`, upsert on `id`; **now includes `gcash_number`, `gcash_account_name`, `gcash_qr`**).
+- `search.functions.ts` — `searchProducts` (`:245`), `getAutocompleteSuggestions` (`:262`): fully in-memory search; tokenize + Levenshtein + weighted (name 10, category 6, brand 6, tag 4, description 2) + log-scaled popularity; virtual brands via `getVirtualBrand()`.
+- `customers.functions.ts` — `getCustomers` (`:17`): profiles + per-user order aggregation (count/total/last date).
+- `dashboard.functions.ts` — `getDashboardData` (`:44`): counts + **`revenueByMonth` (12 buckets)** + categories + top products + recent activity (the dashboard crash source, §9 #1).
 
 ---
 
 ## 6. Payments — GCash Flow
 
-- **Config** (`src/routes/checkout.tsx`): `GCASH_CONFIG = { number: "0917 123 4567", name: "Peach Craft PH" }`. Checkout uses `shippingSchema` (zod) and `generateDisplayOrderId`.
+- **Admin-managed config**: `DEFAULT_GCASH_CONFIG` (`checkout.tsx:17-21`: number `0917 123 4567`, name `Peach Craft PH`, placeholder QR) → replaced by `gcashConfig` state loaded from `getStoreDetails()` on mount, per-field fallback to defaults (`checkout.tsx:110-126`). After migration 006, admin edits number/name/QR via `admin/website-settings.tsx`.
+- **Order ID for the customer**: `PTT-yyyymmdd-XXX` (`generateOrderId`, `supabase.functions.ts:583-588`; client uses `generateDisplayOrderId`).
 - **Flow**:
-  1. `createOrder` → order created `status: pending`, `payment_status: pending` (gcash) or `paid` (other).
-  2. Customer submits proof → `submitGCashProof` (`:701`): auth via `accessToken`; rejects duplicate `gcash_reference_number` (app check + unique constraint `23505`); verifies order ownership, `payment_method === "gcash"`, `payment_status === "pending"`. Inserts `gcash_payments (status: pending)` and flips order to `payment_status: awaiting_verification`.
-  3. Customer pre-checks duplicate refs via `checkDuplicateReference` (`:686`, GET).
-  4. Admin acts → `verifyGCashPayment` (`:784`, POST, calls `verifyAdmin()`): payment must be `pending`; **approve** → payment `verified` + order `payment_status: paid, status: confirmed`; **reject** → payment `rejected` + order `payment_status: failed`.
-- **Idempotency note**: verify endpoint guards on `payment.status !== "pending"`, so a double-submitted action is rejected — good. The proof-submit step relies on the unique ref + `23505` catch — acceptable.
+  1. `createOrder` → `orders(status: pending, payment_status: pending)` for gcash; `paid` for COD. **Deducts stock atomically** (per-item `.gte("stock_qty", qty)` conditional update), rolls back all prior deductions on any failure via `restoreStock`.
+  2. Customer submits proof → `submitGCashProof`: dup-check ref (app + `23505`), ownership (`order.user_id === userId`), `payment_method === "gcash"`, `payment_status === "pending"`. Inserts `gcash_payments(pending)` + order → `awaiting_verification`.
+  3. Admin `verifyGCashPayment`: **approve** → payment `verified` + order `paid`/`confirmed`; **reject** → payment `rejected` + order `payment_status: failed`. Idempotent via `payment.status !== "pending"` guard.
+- **Client submit** (`checkout.tsx` `handleSubmitProof` ~`:322`): validates ref non-empty, screenshot file present, email non-empty **AND format `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`** → `uploadPaymentProof` → `submitGCashProof`. Button (`:796-807`) is `bg-wine`, label flips to "Submitting..." while `submitProofMutation || uploadMutation` is pending.
+- **E2E status (2026-08-20)**: 53/53 DB procedure checks pass across the whole app; **user successfully submitted 2 real proofs** (`1e9f45eb`, `660c1c42`, pending) — submit-button fix confirmed.
+- **Idempotency**: verify double-action blocked; proof dup blocked by unique ref.
 
 ---
 
 ## 7. Image Handling & R2 Storage
 
-- **Upload path** (`uploadProductImage`, `:1546`; `uploadPaymentProof`, `:609`): client sends `{ fileName, base64, accessToken }`; server decodes MIME from the data URI, rejects non-PNG/JPEG/GIF/WebP, then:
-  - **Magic-byte validation**: `validateMagicBytes`/`validateImageBuffer` (`:590-607`) — signature check, not client MIME. Payment proofs also capped at 10 MB (`:647`).
-  - **Primary store: Cloudflare R2** via REST API `PUT https://api.cloudflare.com/client/v4/accounts/{account}/r2/buckets/{bucket}/objects/{key}` with Bearer `CLOUDFLARE_R2_API_TOKEN` (`encodeR2ObjectKey` percent-encodes each path segment).
-  - Keys: products → `public/`, payment proofs → `payment-proofs/`.
-  - **Fallback**: Supabase Storage buckets `product-images` / `payment-proofs` if R2 env missing.
-- **Serving**: returned URL is always the **proxy** `/api/images/{encodedPath}` — never a direct R2 public URL (bypasses Cloudflare OFRB). `src/server.ts:84-128` proxies the GET, sets `Content-Type` from R2 response, `Cache-Control: public, max-age=31536000`, `Access-Control-Allow-Origin: *`.
+- **Upload**: client sends `{ fileName, base64, accessToken }`; server:
+  - Decodes MIME from data URI; whitelist PNG/JPEG/GIF/WebP.
+  - **Magic-byte validation** `validateMagicBytes` (`:590-607`) — never trusts client MIME/extension.
+  - Payment proofs capped at **10 MB** server-side (`:647`).
+  - Primary store: **Cloudflare R2 REST** `PUT …/accounts/{id}/r2/buckets/{bucket}/objects/{key}` with Bearer `CLOUDFLARE_R2_API_TOKEN`; `encodeR2ObjectKey` percent-encodes path segments. Keys: products → `public/`, proofs → `payment-proofs/`.
+  - Fallback: Supabase Storage buckets `product-images` / `payment-proofs`.
+- **Serving**: app always returns the **proxy** `/api/images/{encodedPath}` (never a direct R2 URL). `src/server.ts:84-128` proxies GET; sets `Content-Type` from R2, `Cache-Control: public, max-age=31536000`, `Access-Control-Allow-Origin: *`.
+- **Verified live 2026-08-20**: R2 PUT returns 200 (~900ms).
 
 ---
 
-## 8. Frontend Patterns & Design System
+## 8. Frontend Patterns, Checkout & Shop
 
-- **Design tokens** in `src/styles.css`: oklch color space, kawaii "Peach Craft" palette, semantic tokens via `@theme inline`; shadcn tokens (slate base, `cssVariables: true` in `components.json`).
-- **Home page**: hero gradient kept; section backgrounds are **white** (latest intended design).
-- **Utility**: `cn()` = `twMerge(clsx(...))` in `src/lib/utils.ts`.
-- **Components**: shadcn/ui style in `src/components/ui/*`; Radix primitives; lucide icons.
-- **Cart UX**: `src/lib/cart.ts` hook — localStorage-first with server sync; `addToCart` throws on over-stock / >25 units; cart badge reacts to `peachcraft-cart-updated` event.
-- **Forms**: react-hook-form + `@hookform/resolvers` zod. **Toasts**: sonner. **Charts**: recharts.
-- **Loading/error discipline**: server fns return data to React Query; every mutation invalidates the exact query keys it feeds. (Audit found the admin dashboard currently violates the "no `data!` without guard" rule — §9 #1.)
+### Design system (`src/styles.css`)
+- oklch tokens; `@theme inline` semantic mapping; shadcn/ui tokens.
+- Custom tokens: `blush`, `cream`, `sage`, `sage-deep`, `brown`, **`wine`**.
+- **`wine` was dropped in the redesign → ALL `bg-wine`/`text-wine`/`border-wine/*` elements were invisible (white-on-white)**. **FIXED (committed)**: `--wine` light `oklch(0.45 0.14 20)`, dark `oklch(0.7 0.14 20)` + `--color-wine: var(--wine)` (`styles.css`). Verified `bg-wine` emits in built CSS. Also fixed PhotoSlot `var(--wine)`.
+- `--primary` is **green** (`oklch(0.58 0.08 150)`) — admin "Approve" green button, storefront "Continue…" buttons.
+- Dark mode via `.dark` class; `@custom-variant dark`.
+
+### Checkout state machine (`checkout.tsx`)
+- Steps `1|2|3` (`Shipping` → `Payment` → `Confirm`), indicator at `:502-517`.
+- Step 1: shipping form (name/email/street/city/province/zip) + `formErrors` rendered here; "Continue to Payment" → `setStep(2)` (no validation).
+- Step 2: payment method (only **GCash** selectable today; COD latent — §9 L5) + **handlePlaceOrder** → `createOrder`; "Continue to Review" (`:617-628`). **`formErrors` are NOT rendered in step 2 — §9 M1.**
+- Step 3: GCash panel (QR/number/name/amount/order-id from `gcashConfig`, `:675-722`) + proof form (ref, email, screenshot; `:724-786`) + Back / **Submit Payment Proof** (`:788-807`). Success → `setStep(4)` success screen. Failure (`!orderId`) → "Failed to create order" + retry.
+- Resume: `/checkout?orderId=` → `getCustomerOrderById`; if gcash+pending → sets paymentMethod/orderId/displayOrderId/step 3. **Displayed amount is live-cart `totalAmount` (`:98`) — §9 H1.**
+- Guard: unauthenticated → auto-redirect `/login?redirect=/checkout` after 3s.
+
+### Shop filters (`shop/index.tsx`)
+- Availability: all / in-stock / out-of-stock (`:48-52`).
+- Sort options `:54-64` — **4 of 9 are dead/mislabeled (all `newest-first`): Featured, Most relevant, Best selling, Date new→old; "Date, old to new" is real. — §9 M5.**
+
+### Patterns
+- `cn()` = `twMerge(clsx(...))` (`src/lib/utils.ts`).
+- Forms: react-hook-form + zod resolvers (login/signup/profile/admin product form); raw `useState` forms in checkout.
+- Toasts: **sonner**; Charts: **recharts**.
+- Cart: `src/lib/cart.ts` hook — localStorage key `peachcraft-cart`, cross-tab event `peachcraft-cart-updated`, server sync via `saveCartForUser`/`getCartForUser`; `addToCart` throws on over-stock / >25 units.
+- Every mutation invalidates the exact query keys it feeds (verified for checkout/profile/orders/login/signup/admin save flows).
+- `useCurrency()` → `formatPrice`.
 
 ---
 
 ## 9. Security, Error Handling & Known Issues
 
 ### Security posture (implemented)
-- Server-side zod validation on every server fn; client validation is UX only.
-- Image uploads validated by magic bytes + server size cap; rejected before any external I/O.
-- Redirect params same-origin only (`login.tsx` `sanitizeRedirect`).
-- IP rate limits via `signup_attempts` (5/hr), `login_attempts`, `cart_add_attempts`, `order_attempts`.
-- Turnstile on signup (and checkout where token provided).
-- CSP + security headers applied at `src/server.ts`.
-- Error page never leaks stack traces (`src/lib/error-page.ts`); SSR throws captured by `src/lib/error-capture.ts`.
+- Server-side zod on every server fn; client validation is UX only.
+- Uploads: magic bytes + server size cap, rejected before any external I/O.
+- Redirects: same-origin relative only.
+- Rate limits: `signup_attempts` 5/hr, `login_attempts` 5/hr, `cart_add_attempts`, `order_attempts` 3/hr.
+- Turnstile on signup + checkout (token provided) + login.
+- CSP + security headers at `src/server.ts`; error page never leaks stacks.
+- Never log tokens/sessions to console; admin identifiers never in `VITE_*`.
 
-### Known issues (report as facts; none fixed in this task)
-1. **Admin dashboard crash** — `src/routes/admin/index.tsx:138` `data!.revenueByMonth` throws `Cannot read properties of undefined` when `data` is `undefined` while `isLoading` is false and `error` is null. Same `data!` pattern at other lines (~143, 162, 221, 230, 239, 266, 270, 307). Root cause of `data === undefined` with no error still under investigation.
-2. **Vercel 500** — deployed `_ssr/index.mjs` imports `/var/task/_ssr/server-CUcuYyFi.mjs`, which is never built (`ERR_MODULE_NOT_FOUND`). Identical hash appears across deployments, including after "redeploy without cache", so it is **not** a stale-cache issue; the Vercel-side build produces a server bundle reference with no matching file. Local `vite build` produces a valid `server-CATFT5PZ.mjs`. Repo currently sits at pre-fix commit `2236181` (reset + force-push removed the `vercel.json` + entry-removal fix commits).
-3. **Stored XSS (High)** — `screenshot_url` from `submitGCashProof` is client-supplied and later rendered in `admin/payments/index.tsx` (~233-241) via `dangerouslySetInnerHTML` without sanitization. Fix should validate `screenshot_url` to the `/api/images/…` proxy shape server-side and/or render as plain `<img src>`.
-4. **Client-supplied amounts (High)** — `createOrder` trusts `total_amount` and per-item `price_at_purchase` from the client; nothing recomputes prices server-side from `products.price`. A crafted request can underpay.
-5. **TOCTOU one-active-order (Medium)** — the "only one active order" check + insert is not atomic; concurrent submits can create two orders.
-6. **Double-order on double-click (Medium)** — checkout submit button can fire twice before navigation; no in-flight lock.
-7. **Uncommitted change** — `src/lib/api/admin-auth.ts` `verifyAdmin` cookie fallback is an uncommitted working-tree edit.
-8. **`@supabase/ssr` types** — `setAll` is optional on the cookie client; cookie-session paths must construct the client explicitly (relevant to the §4 cookie fix).
+### Known issues — status 2026-08-20 (report as facts)
+1. **Admin dashboard crash (OPEN)** — `admin/index.tsx:138` `data!.revenueByMonth` throws when `data` is `undefined` with `isLoading=false, error=null`. Same `data!` at ~143,162,221,230,239,266,270,307. Root cause unconfirmed; underlying DB queries verified working.
+2. **Vercel 500 (OPEN)** — `_ssr/index.mjs` imports `/var/task/_ssr/server-CUcuYyFi.mjs` (never built; `ERR_MODULE_NOT_FOUND`); identical hash across redeploys → not stale cache. Local build emits different valid hash. Repo at `9fb0966`.
+3. **Stored XSS (OPEN, High)** — `screenshot_url` client-supplied in `submitGCashProof`; rendered via `dangerouslySetInnerHTML` at `admin/payments/index.tsx` (~233-241). Fix: validate `/api/images/…` shape server-side and/or plain `<img src>`.
+4. **Client-supplied amounts (OPEN, High — deferred Issue 1)** — `createOrder` writes client `total_amount`/`price_at_purchase` verbatim (~540/564). Analysis complete: single products query → server-side recompute → reject missing/inactive → keep rollback. checkout.tsx sends both fields (~262-276).
+5. **TOCTOU one-active-order (Medium)** — check + insert not atomic.
+6. **Double-order on double-click (Medium)** — checkout submit has no in-flight lock.
+7. **H1 (High, NEW)** — Checkout resume shows live-cart amount, not `resumeOrder.total_amount` (`checkout.tsx:98,703`) → wrong payment amount on resume.
+8. **M1** — Step-2 validation failures invisible (`checkout.tsx:617-628`).
+9. **M2** — CartToast "Check out" navigates to `/cart` not `/checkout` (`CartToast.tsx:73-76`).
+10. **M3** — Contact form submits nothing (`contact.tsx:67-68`).
+11. **M4** — Newsletter signup submits nothing (`SiteFooter.tsx:142`).
+12. **M5** — Shop sort dead/mislabeled options (`shop/index.tsx:54-64`).
+13. **M6** — Buy It Now navigates to checkout even when add-to-cart fails (`shop/$id.tsx:380-383`).
+14. **L1** — Admin payments approve/reject failures are `console.error`-only (`admin/payments/index.tsx:76`).
+15. **L2** — `checkout.tsx` `resumeError` set but never rendered.
+16. **L3** — Admin sign-out spinner dead code (`admin/header.tsx`).
+17. **L4** — Wishlist heart cosmetic (`ProductCard.tsx` ~139).
+18. **L5** — COD step-3 latent stuck-spinner branch (unreachable today).
+19. **L6** — Admin orders realtime `user_email: "Loading..."` never resolves.
+20. **L7** — `getAdminProducts` field gap → admin thumbnails + tag-search broken.
+21. **L8** — username/address maxLength not mirrored client-side.
 
-### Conventions to keep
-- One concern per change; server-side recompute/verify privileged data; webhook/payment mutations idempotent; DB constraints over app-level assumptions; never log tokens/sessions; run `npx tsc --noEmit` after changes.
+### Conventions for agents
+- One concern per change; report unrelated issues, don't fix them in the same change.
+- Server-side recompute/verify privileged data; idempotent payment/webhook mutations; DB constraints over app logic.
+- Run `npx tsc --noEmit` after every change (currently clean).
+- **Update memory.md after every session.**
+- **`.vercel/output/**` is tracked — never commit its build changes; `git checkout -- .vercel/output` first.
+- PowerShell/node quirk: DB check scripts must be `.cjs` files copied into the project root (`"type": "module"`), run `node _x.cjs`, then delete; `dotenv` is not installed — parse `.env.local` manually. `rg` is not installed (use grep tool / Select-String).
+
+---
+
+## 10. Environment Variables (`.env.local` / `.env.example`)
+
+| Var | Use |
+|---|---|
+| `CLOUDFLARE_R2_ACCOUNT_ID` | R2 account id (upload URLs) |
+| `CLOUDFLARE_R2_BUCKET_NAME` | R2 bucket |
+| `CLOUDFLARE_R2_API_TOKEN` | R2 REST bearer token |
+| `VITE_SUPABASE_URL` / `SUPABASE_URL` | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` / `SUPABASE_ANON_KEY` | anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | service-role (server only; never bundle) |
+| `ADMIN_EMAIL` (server) / `VITE_ADMIN_EMAIL` (client cosmetic) | admin gate |
+| `VITE_TURNSTILE_SITE_KEY` | Turnstile site key |
+| `TURNSTILE_SECRET_KEY` | Turnstile secret |
+| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | optional email |
+
+---
+
+## 11. Git History (current)
+
+- `9fb0966` fix: restore wine theme color (invisible submit button) + validate email before submit — **pushed**.
+- `09d5d81` admin: editable GCash settings; fix order details for orders missing user profile (incl. `sql/migrations/006_add_gcash_settings.sql` + `memory.md`) — **pushed**.
+- `e07cd1a` update checkout and removed some details.
+- `d5107a8` fixed the unauthorized bug in admin panel (verifyAdmin cookie fallback).
 
 ---
 
 ## Self-Check
-- ✅ File paths & line refs above trace to real files read this session.
-- ✅ Data model matches `sql/migrations/001-005` + `supabase-current-schema.md`.
-- ✅ Known issues are reported as facts, not fixed.
-- ✅ No generic Next.js/TanStack boilerplate assumptions — every statement maps to Peach Craft code.
-- ⚠️ Marked `[verify]`: Resend usage site in app code; React Query provider file; exact `createOrder` head (lines 384-505 not re-read this pass); `brand` column presence in `products` (used by search but shown in schema docs as `brand`).
-- ✅ This task changed only `memory.md` — no source code was modified.
+- ✅ HEAD `9fb0966`, `main` synced with `origin/main`.
+- ✅ Wine token, getOrderDetails null-safe fix, GCash settings (code + migration 006), email validation — committed.
+- ✅ 53/53 E2E DB procedure checks pass; submit button confirmed by 2 live pending proofs.
+- ✅ Full route map, function catalog, env catalog, and known-issue status current.
+- ⚠️ OPEN: migration 006 not applied to Supabase; Vercel 500 (#2); admin dashboard crash (#1); audit fixes H1/M1-M6/L1-L8 pending user confirmation.
+- ⚠️ `[verify]`: Resend app-side usage site; React Query provider file; `brand` column presence in `products`.
