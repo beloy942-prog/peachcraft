@@ -125,7 +125,7 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 | `getAdminDashboardData` | 153 | GET | (uncalled — dead) |
 | `getAdminNotifications` | 264 | GET | low-stock + pending-payment counts |
 | `getUserActiveOrderStatus` | 338 | POST | any order in pending/confirmed/shipped for user |
-| `createOrder` | 384 | POST | see §6; **trusts client amounts — §9 #4** |
+| `createOrder` | 384 | POST | see §6; **trusts client amounts — §9 #4**; **IP order rate limit REMOVED (no `order_attempts` insert/check)** |
 | `uploadPaymentProof` | 609 | POST | magic bytes + ≤10MB → R2 (payment-proofs/) |
 | `checkDuplicateReference` | 686 | GET | gcash ref already used (not rejected) |
 | `submitGCashProof` | 701 | POST | dup check, ownership, method/status; insert payment + flip order |
@@ -211,7 +211,7 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 - Step 2: payment method (only **GCash** selectable today; COD latent — §9 L5) + **handlePlaceOrder** → `createOrder`; "Continue to Review" (`:617-628`). **`formErrors` are NOT rendered in step 2 — §9 M1.**
 - Step 3: GCash panel (QR/number/name/amount/order-id from `gcashConfig`, `:675-722`) + proof form (ref, email, screenshot; `:724-786`) + Back / **Submit Payment Proof** (`:788-807`). Success → `setStep(4)` success screen. Failure (`!orderId`) → "Failed to create order" + retry.
 - Resume: `/checkout?orderId=` → `getCustomerOrderById`; if gcash+pending → sets paymentMethod/orderId/displayOrderId/step 3. **Displayed amount is live-cart `totalAmount` (`:98`) — §9 H1.**
-- Guard: **NONE** — guest checkout is fully supported. Unauthenticated visitors see the shipping form directly. Optional "Have an account? Log in" banner shown (user-initiated only, never forced). Previous auto-redirect to `/login` after 3s was removed. Cart page (`cart.tsx`) also allows unauthenticated checkout. Turnstile required for guest orders; IP rate limiting (`order_attempts`) enforced for all orders. `orders.user_id` is NULL for guest orders. Server-side: `createOrder` accepts optional `accessToken`; `submitGCashProof` verifies guest ownership via `shipping_address.email`.
+- Guard: **NONE** — guest checkout is fully supported. Unauthenticated visitors see the shipping form directly. Optional "Have an account? Log in" banner shown (user-initiated only, never forced). Previous auto-redirect to `/login` after 3s was removed. Cart page (`cart.tsx`) also allows unauthenticated checkout. Turnstile required for guest orders. `orders.user_id` is NULL for guest orders. Server-side: `createOrder` accepts optional `accessToken`; `submitGCashProof` verifies guest ownership via `shipping_address.email`. **IP order rate limit (`order_attempts`) REMOVED (2026-08-20) — no limit on orders per IP; the one-active-order guard still applies to authenticated users.**
 
 ### Shop filters (`shop/index.tsx`)
 - Availability: all / in-stock / out-of-stock (`:48-52`).
@@ -233,7 +233,7 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 - Server-side zod on every server fn; client validation is UX only.
 - Uploads: magic bytes + server size cap, rejected before any external I/O.
 - Redirects: same-origin relative only.
-- Rate limits: `signup_attempts` 5/hr, `login_attempts` 5/hr, `cart_add_attempts`, `order_attempts` 3/hr.
+- Rate limits: `signup_attempts` 5/hr, `login_attempts` 5/hr, `cart_add_attempts`. **`order_attempts` IP limit REMOVED from createOrder (2026-08-20); table/`order_attempts` migration remains unused.**
 - Turnstile on signup + checkout (token provided) + login.
 - CSP + security headers at `src/server.ts`; error page never leaks stacks.
 - Never log tokens/sessions to console; admin identifiers never in `VITE_*`.

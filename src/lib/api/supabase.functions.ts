@@ -452,20 +452,6 @@ export const createOrder = createServerFn({ method: "POST" })
       }
     }
 
-    // --- IP-based rate limiting (applies to ALL orders, guest and authenticated) ---
-    if (data.ip) {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { count, error: countError } = await supabase
-        .from("order_attempts")
-        .select("*", { count: "exact", head: true })
-        .eq("ip", data.ip)
-        .gte("created_at", oneHourAgo);
-
-      if (!countError && count !== null && count >= 3) {
-        throw new Error("Too many orders from this IP. Please try again later.");
-      }
-    }
-
     // --- Product validation (shared for both paths) ---
     const productIds = Array.from(new Set(data.items.map((item) => item.product_id)));
     const { data: products, error: productsError } = await supabase
@@ -568,11 +554,6 @@ export const createOrder = createServerFn({ method: "POST" })
         await restoreStock(supabase, rollbackId, deducted.get(rollbackId) ?? 0);
       }
       throw itemsError;
-    }
-
-    // Record the order attempt for IP-based rate limiting (best-effort)
-    if (data.ip) {
-      await supabase.from("order_attempts").insert({ ip: data.ip, user_id: userId }).maybeSingle();
     }
 
     return { id: order.id };
