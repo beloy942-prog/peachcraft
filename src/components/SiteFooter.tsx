@@ -15,29 +15,11 @@ const paymentMethods = [
     label: "GCash",
     badgeClass: "bg-[#00A5E3] text-white",
     icon: (
-      <svg viewBox="0 0 120 40" className="h-4 w-14" aria-hidden="true">
+      <svg viewBox="0 0 120 40" className="h-6 w-auto" aria-hidden="true">
         <rect width="120" height="40" rx="10" fill="#00A5E3" />
         <path d="M34 14.2h8.4c3.8 0 6.3 1.8 6.3 5.2 0 3.6-2.8 5.5-6.4 5.5H34V14.2Zm-7.2-6.1h14.4c6.7 0 11.7 3.3 11.7 10.2 0 6.5-4.8 10-11.9 10H26.8V8.1ZM62.2 8.1h7.1l8.1 16.2h-7.3l-1.2-2.5h-7.5l-1.2 2.5h-7.2L62.2 8.1Zm2.1 5.1-2 4h3.9l-1.9-4ZM88 8.1h6.7l7.2 16.2h-7.2l-1-2.2H92l-1 2.2h-7.2L88 8.1Zm2 5.1-1.9 4h3.8l-1.9-4Z" fill="white" />
       </svg>
     ),
-  },
-  {
-    key: "visa",
-    label: "VISA",
-    badgeClass: "bg-white/90 text-slate-900",
-    icon: <span className="text-[10px] font-bold tracking-[0.25em]">VISA</span>,
-  },
-  {
-    key: "mastercard",
-    label: "Mastercard",
-    badgeClass: "bg-white/90 text-slate-900",
-    icon: <span className="text-[10px] font-bold tracking-[0.16em]">MC</span>,
-  },
-  {
-    key: "paypal",
-    label: "PayPal",
-    badgeClass: "bg-[#1F2C3D] text-white",
-    icon: <span className="text-[10px] font-bold tracking-[0.16em]">PayPal</span>,
   },
 ];
 
