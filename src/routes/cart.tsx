@@ -13,7 +13,6 @@ function CartPage() {
   const { items, itemCount, subtotal, updateQuantity, removeItem, clear } = useCart();
   const { formatPrice } = useCurrency();
   const { user: authUser } = useAuth();
-  const userEmail = authUser?.email ?? null;
 
   const shippingFee = 150;
   const taxAmount = 0;
@@ -157,20 +156,7 @@ function CartPage() {
                 </span>
               </div>
 
-              {!userEmail ? (
-                <div className="pt-2 space-y-3">
-                  <p className="text-[12px] font-medium text-gray-400 text-center">
-                    Please sign in to place your order
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => navigate({ to: "/login", search: { redirect: "/checkout" } })}
-                    className="w-full rounded-full bg-gray-900 px-5 py-3 text-sm font-medium text-white shadow-[0_2px_12px_-3px_rgba(0,0,0,0.25)] hover:bg-gray-800 transition-colors"
-                  >
-                    Sign in to checkout
-                  </button>
-                </div>
-              ) : (
+              <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => navigate({ to: "/checkout", search: { orderId: undefined } })}
@@ -178,7 +164,20 @@ function CartPage() {
                 >
                   Proceed to checkout
                 </button>
-              )}
+                {!authUser && (
+                  <p className="text-[12px] font-medium text-gray-400 text-center mt-2">
+                    Have an account?{" "}
+                    <button
+                      type="button"
+                      onClick={() => navigate({ to: "/login", search: { redirect: "/checkout" } })}
+                      className="underline underline-offset-2 hover:text-gray-600"
+                    >
+                      Log in
+                    </button>{" "}
+                    for faster checkout.
+                  </p>
+                )}
+              </div>
 
               <button
                 type="button"

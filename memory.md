@@ -211,7 +211,7 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 - Step 2: payment method (only **GCash** selectable today; COD latent — §9 L5) + **handlePlaceOrder** → `createOrder`; "Continue to Review" (`:617-628`). **`formErrors` are NOT rendered in step 2 — §9 M1.**
 - Step 3: GCash panel (QR/number/name/amount/order-id from `gcashConfig`, `:675-722`) + proof form (ref, email, screenshot; `:724-786`) + Back / **Submit Payment Proof** (`:788-807`). Success → `setStep(4)` success screen. Failure (`!orderId`) → "Failed to create order" + retry.
 - Resume: `/checkout?orderId=` → `getCustomerOrderById`; if gcash+pending → sets paymentMethod/orderId/displayOrderId/step 3. **Displayed amount is live-cart `totalAmount` (`:98`) — §9 H1.**
-- Guard: unauthenticated → auto-redirect `/login?redirect=/checkout` after 3s.
+- Guard: **NONE** — guest checkout is fully supported. Unauthenticated visitors see the shipping form directly. Optional "Have an account? Log in" banner shown (user-initiated only, never forced). Previous auto-redirect to `/login` after 3s was removed. Cart page (`cart.tsx`) also allows unauthenticated checkout. Turnstile required for guest orders; IP rate limiting (`order_attempts`) enforced for all orders. `orders.user_id` is NULL for guest orders. Server-side: `createOrder` accepts optional `accessToken`; `submitGCashProof` verifies guest ownership via `shipping_address.email`.
 
 ### Shop filters (`shop/index.tsx`)
 - Availability: all / in-stock / out-of-stock (`:48-52`).
@@ -247,7 +247,7 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 6. **Double-order on double-click (Medium)** — checkout submit has no in-flight lock.
 7. **H1 (High, NEW)** — Checkout resume shows live-cart amount, not `resumeOrder.total_amount` (`checkout.tsx:98,703`) → wrong payment amount on resume.
 8. **M1** — Step-2 validation failures invisible (`checkout.tsx:617-628`).
-9. **M2** — CartToast "Check out" navigates to `/cart` not `/checkout` (`CartToast.tsx:73-76`).
+9. **M2 (FIXED)** — CartToast "Check out" navigated to `/cart` not `/checkout` → now fixed to `/checkout` (`CartToast.tsx:75`).
 10. **M3** — Contact form submits nothing (`contact.tsx:67-68`).
 11. **M4** — Newsletter signup submits nothing (`SiteFooter.tsx:142`).
 12. **M5** — Shop sort dead/mislabeled options (`shop/index.tsx:54-64`).
@@ -302,5 +302,6 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 - ✅ Wine token, getOrderDetails null-safe fix, GCash settings (code + migration 006), email validation — committed.
 - ✅ 53/53 E2E DB procedure checks pass; submit button confirmed by 2 live pending proofs.
 - ✅ Full route map, function catalog, env catalog, and known-issue status current.
+- ✅ Guest checkout fully implemented and verified: `cart.tsx` gate removed (was `!userEmail` → "Sign in to checkout"), `checkout.tsx` redirect removed (was auto-redirect after 3s), `checkout.tsx` "Authentication Required" block removed, `isVerified` gate now `isAuthenticated && !isVerified`. `createOrder` accepts optional `accessToken` with guest path (turnstile required, no auth/email-verification/active-order checks). `submitGCashProof` verifies guest ownership via `shipping_address.email`. `uploadPaymentProof` auth removed. `getGuestOrder` added. `CartToast.tsx` "Check out" button fixed (`/cart` → `/checkout`). `npx tsc --noEmit` clean. Manual trace: unauthenticated → add to cart → cart page → checkout → shipping → payment → order placed → confirmation. No forced redirect, no blocking screen.
 - ⚠️ OPEN: migration 006 not applied to Supabase; Vercel 500 (#2); admin dashboard crash (#1); audit fixes H1/M1-M6/L1-L8 pending user confirmation.
 - ⚠️ `[verify]`: Resend app-side usage site; React Query provider file; `brand` column presence in `products`.

@@ -407,42 +407,52 @@ export const createOrder = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data }) => {
-    if (data.turnstileToken) {
-      const valid = await verifyTurnstile(data.turnstileToken);
-      if (!valid) {
-        throw new Error("CAPTCHA verification failed. Please refresh and try again.");
-      }
-    }
+    // --- Determine if this is a guest or authenticated order ---
+    const isGuest = !data.accessToken;
 
-    const authClient = getSupabaseServer(undefined, { authOnly: true });
+    const supabase = getSupabaseServer();
 
+    // --- Auth path: validate token, check email verification, active order ---
     let userId: string | null = null;
-    if (data.accessToken) {
-      const tokenResult = await authClient.auth.getUser(data.accessToken);
+    if (!isGuest) {
+      const authClient = getSupabaseServer(undefined, { authOnly: true });
+      const tokenResult = await authClient.auth.getUser(data.accessToken!);
       if (tokenResult.error) {
         throw new Error("Authentication required. Please sign in to place an order.");
       }
       userId = tokenResult.data?.user?.id ?? null;
+      if (!userId) {
+        throw new Error("Authentication required. Please sign in to place an order.");
+      }
+
+      // Verify email_verified status in user profile
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("email_verified")
+        .eq("id", userId)
+        .single();
+
+      if (profileError || !profile || !profile.email_verified) {
+        throw new Error("Your email has not been verified yet. Please verify your email before placing an order.");
+      }
+
+      // Active order check: skip for guests — no stable identity to key on
+      const { data: activeOrders, error: activeOrdersError } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("user_id", userId)
+        .in("status", ["pending", "confirmed", "shipped"]);
+
+      if (activeOrdersError) {
+        throw activeOrdersError;
+      }
+
+      if (activeOrders && activeOrders.length > 0) {
+        throw new Error("You already have an active order. You can only place a new order once your current order is completed or cancelled.");
+      }
     }
-    if (!userId) {
-      throw new Error("Authentication required. Please sign in to place an order.");
-    }
 
-    // Service-role client for DB operations (bypasses RLS)
-    const supabase = getSupabaseServer();
-
-    // Verify email_verified status in user profile
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("email_verified")
-      .eq("id", userId)
-      .single();
-
-    if (profileError || !profile || !profile.email_verified) {
-      throw new Error("Your email has not been verified yet. Please verify your email before placing an order.");
-    }
-
-    // IP-based rate limiting for orders (max 3 orders per IP per hour)
+    // --- IP-based rate limiting (applies to ALL orders, guest and authenticated) ---
     if (data.ip) {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const { count, error: countError } = await supabase
@@ -456,21 +466,7 @@ export const createOrder = createServerFn({ method: "POST" })
       }
     }
 
-    // Rate limit check: ensure user doesn't have an active order
-    const { data: activeOrders, error: activeOrdersError } = await supabase
-      .from("orders")
-      .select("id")
-      .eq("user_id", userId)
-      .in("status", ["pending", "confirmed", "shipped"]);
- 
-    if (activeOrdersError) {
-      throw activeOrdersError;
-    }
-
-    if (activeOrders && activeOrders.length > 0) {
-      throw new Error("You already have an active order. You can only place a new order once your current order is completed or cancelled.");
-    }
-
+    // --- Product validation (shared for both paths) ---
     const productIds = Array.from(new Set(data.items.map((item) => item.product_id)));
     const { data: products, error: productsError } = await supabase
       .from("products")
@@ -497,6 +493,7 @@ export const createOrder = createServerFn({ method: "POST" })
       }
     }
 
+    // --- Stock reservation with rollback ---
     const updatedProductIds: string[] = [];
     const deducted = new Map<string, number>();
 
@@ -535,8 +532,9 @@ export const createOrder = createServerFn({ method: "POST" })
       deducted.set(item.product_id, (deducted.get(item.product_id) ?? 0) + item.qty);
     }
 
+    // --- Create order ---
     const orderPayload: Record<string, unknown> = {
-      user_id: userId,
+      user_id: userId, // NULL for guest orders
       total_amount: data.total_amount,
       status: "pending",
       shipping_address: data.shipping_address,
@@ -615,20 +613,8 @@ export const uploadPaymentProof = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data }) => {
-    const authClient = getSupabaseServer(undefined, { authOnly: true });
-
-    let userId: string | null = null;
-    if (data.accessToken) {
-      const tokenResult = await authClient.auth.getUser(data.accessToken);
-      if (tokenResult.error) {
-        throw new Error("Authentication required.");
-      }
-      userId = tokenResult.data?.user?.id ?? null;
-    }
-    if (!userId) {
-      throw new Error("Authentication required.");
-    }
-
+    // File upload is available to both authenticated and guest users.
+    // Ownership is verified later at submitGCashProof time, not here.
     const supabase = getSupabaseServer();
 
     const { Buffer } = await import("node:buffer");
@@ -709,19 +695,9 @@ export const submitGCashProof = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data }) => {
-    const authClient = getSupabaseServer(undefined, { authOnly: true });
-
-    let userId: string | null = null;
-    if (data.accessToken) {
-      const tokenResult = await authClient.auth.getUser(data.accessToken);
-      userId = tokenResult.data?.user?.id ?? null;
-    }
-    if (!userId) {
-      throw new Error("Authentication required.");
-    }
-
     const supabase = getSupabaseServer();
 
+    // --- Duplicate reference check (shared for both paths) ---
     const { data: existing } = await supabase
       .from("gcash_payments")
       .select("id, status")
@@ -732,9 +708,10 @@ export const submitGCashProof = createServerFn({ method: "POST" })
       throw new Error("This GCash reference number has already been used.");
     }
 
+    // --- Fetch order ---
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, user_id, payment_method, payment_status")
+      .select("id, user_id, payment_method, payment_status, shipping_address")
       .eq("id", data.order_id)
       .single();
 
@@ -742,8 +719,31 @@ export const submitGCashProof = createServerFn({ method: "POST" })
       throw new Error("Order not found.");
     }
 
-    if (order.user_id !== userId) {
-      throw new Error("This order does not belong to you.");
+    // --- Ownership verification ---
+    // Authenticated path: verify order.user_id matches the session user.
+    // Guest path: verify order.user_id IS NULL AND the email matches shipping_address.
+    const isGuestOrder = order.user_id === null;
+
+    if (isGuestOrder) {
+      // Guest ownership: order must be unclaimed and email must match shipping address
+      const shippingEmail = (order.shipping_address as Record<string, string>)?.email;
+      if (!shippingEmail || shippingEmail.toLowerCase() !== data.customer_email.toLowerCase()) {
+        throw new Error("Email does not match the order's shipping address.");
+      }
+    } else {
+      // Authenticated ownership: verify via session token
+      const authClient = getSupabaseServer(undefined, { authOnly: true });
+      let userId: string | null = null;
+      if (data.accessToken) {
+        const tokenResult = await authClient.auth.getUser(data.accessToken);
+        userId = tokenResult.data?.user?.id ?? null;
+      }
+      if (!userId) {
+        throw new Error("Authentication required.");
+      }
+      if (order.user_id !== userId) {
+        throw new Error("This order does not belong to you.");
+      }
     }
 
     if (order.payment_method !== "gcash") {
@@ -2014,6 +2014,49 @@ export const getCustomerOrderById = createServerFn({ method: "POST" })
 
     if (order.user_id !== userId) {
       throw new Error("You can only view your own order.");
+    }
+
+    return {
+      id: order.id,
+      status: order.status,
+      total_amount: order.total_amount,
+      payment_method: order.payment_method,
+      payment_status: order.payment_status,
+      shipping_address: order.shipping_address as Record<string, string> | null,
+    };
+  });
+
+// Guest order lookup: verify ownership via order ID + matching email in shipping_address.
+// No session required — guests retrieve orders by their email and order ID.
+export const getGuestOrder = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      orderId: z.string().uuid(),
+      email: z.string().email(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const supabase = getSupabaseServer();
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("id,status,total_amount,payment_method,payment_status,shipping_address,user_id")
+      .eq("id", data.orderId)
+      .single();
+
+    if (orderError || !order) {
+      throw new Error("Order not found.");
+    }
+
+    // Only allow lookup for guest orders (user_id IS NULL)
+    if (order.user_id !== null) {
+      throw new Error("This is not a guest order. Please log in to view it.");
+    }
+
+    // Verify email matches the shipping address
+    const shippingEmail = (order.shipping_address as Record<string, string>)?.email;
+    if (!shippingEmail || shippingEmail.toLowerCase() !== data.email.toLowerCase()) {
+      throw new Error("Email does not match this order.");
     }
 
     return {

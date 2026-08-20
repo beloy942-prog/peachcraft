@@ -72,7 +72,7 @@ function CartPanel({
 
   const handleCheckout = () => {
     dismiss();
-    navigate({ to: "/cart" });
+    navigate({ to: "/checkout", search: { orderId: undefined } });
   };
 
   return (

@@ -8,7 +8,6 @@ import { getSupabaseClient } from "@/lib/supabase";
 import { getStoreDetails } from "@/lib/api/storeDetails.functions";
 import { useCart } from "@/lib/cart";
 import { useCurrency } from "@/lib/currency-context";
-import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { ArrowLeft, CheckCircle, Copy, Loader2, Upload } from "lucide-react";
 
 type GcashConfig = {
@@ -96,7 +95,6 @@ function CheckoutPage() {
   const shippingFee = 150;
   const taxAmount = 0;
   const totalAmount = subtotal + shippingFee + taxAmount;
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [clientIp, setClientIp] = useState<string | null>(null);
   const [gcashConfig, setGcashConfig] = useState<GcashConfig>(DEFAULT_GCASH_CONFIG);
 
@@ -184,14 +182,7 @@ function CheckoutPage() {
     return () => { mounted = false; };
   }, [authSession]);
 
-  useEffect(() => {
-    if (checkingAuth === false && !isAuthenticated) {
-      const timer = setTimeout(() => {
-        navigate({ to: "/login", search: { redirect: "/checkout" } });
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [checkingAuth, isAuthenticated, navigate]);
+  // Guest checkout: no forced redirect to /login. Guests can proceed directly.
 
   const queryClient = useQueryClient();
 
@@ -201,7 +192,6 @@ function CheckoutPage() {
         data: {
           ...payload,
           accessToken: accessTokenRef.current ?? undefined,
-          turnstileToken: turnstileToken ?? undefined,
           ip: clientIp ?? undefined,
         },
       });
@@ -211,6 +201,10 @@ function CheckoutPage() {
       setDisplayOrderId(generateDisplayOrderId(result.id));
       queryClient.invalidateQueries({ queryKey: ["all-products"] });
       queryClient.invalidateQueries({ queryKey: ["featured-products"] });
+      // Pre-fill GCash email from shipping email (for guests, gcashEmail may be empty)
+      if (!gcashEmail && email) {
+        setGcashEmail(email);
+      }
       if (paymentMethod === "cash_on_delivery") {
         clear();
         setSuccessMessage("Your order is confirmed! We will reach out once it ships.");
@@ -427,27 +421,7 @@ function CheckoutPage() {
     );
   }
 
-  if (!isAuthenticated) {
-    return (
-      <section className="bg-cream py-16">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
-          <div className="rounded-3xl bg-card p-12 shadow-soft space-y-6">
-            <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-500">
-              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-            </div>
-            <div>
-              <h1 className="font-display text-3xl text-brown">Authentication Required</h1>
-              <p className="mt-3 text-foreground/75 max-w-md mx-auto">Please sign in to proceed.</p>
-            </div>
-            <div className="flex justify-center gap-4">
-              <button type="button" onClick={() => navigate({ to: "/login", search: { redirect: "/checkout" } })} className="inline-flex rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground btn-bounce-hover shadow-soft">Sign In</button>
-              <button type="button" onClick={() => navigate({ to: "/signup" })} className="inline-flex rounded-full border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground btn-bounce-hover shadow-soft">Create Account</button>
-            </div>
-          </div>
-        </div>
-      </section>
-    );
-  }
+  // Guest checkout is allowed — no auth gate here.
 
   const canResumeOrder = Boolean(
     resumeOrder &&
@@ -456,7 +430,9 @@ function CheckoutPage() {
     resumeOrder.status === "pending",
   );
 
-  if (!isVerified) {
+  // Email verification check: only applies to authenticated users.
+  // Guests don't have profiles, so skip this gate entirely for them.
+  if (isAuthenticated && !isVerified) {
     return (
       <section className="bg-cream py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
@@ -516,6 +492,23 @@ function CheckoutPage() {
               ))}
             </div>
 
+            {/* Guest checkout banner */}
+            {!isAuthenticated && (
+              <div className="rounded-2xl bg-primary/5 border border-primary/20 p-4 text-sm text-foreground/80 flex items-center justify-between gap-4">
+                <p>
+                  <span className="font-semibold">Have an account?</span>{" "}
+                  <span className="text-foreground/60">Log in for faster checkout and order history.</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate({ to: "/login", search: { redirect: "/checkout" } })}
+                  className="shrink-0 inline-flex rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground btn-bounce-hover hover:bg-primary/90"
+                >
+                  Log in
+                </button>
+              </div>
+            )}
+
             {/* Step 1: Shipping form */}
             {step === 1 && (
               <>
@@ -559,13 +552,6 @@ function CheckoutPage() {
                     {formErrors.zip ? <p className="text-xs text-red-400">{formErrors.zip}</p> : null}
                   </label>
                 </div>
-                <div className="flex justify-center pt-2">
-                  <TurnstileWidget
-                    onToken={setTurnstileToken}
-                    onExpired={() => setTurnstileToken(null)}
-                  />
-                </div>
-
                 <button
                   type="button"
                   onClick={() => setStep(2)}
@@ -831,6 +817,15 @@ function CheckoutPage() {
                 <p className="text-foreground/75 max-w-md mx-auto mb-6 text-sm">
                   {successMessage}
                 </p>
+                {!isAuthenticated && (
+                  <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 max-w-md mx-auto mb-6 text-left">
+                    <p className="font-semibold mb-1">Save your order ID!</p>
+                    <p>
+                      You don&apos;t have an account, so we can&apos;t show you order history.
+                      Save your Order ID <code className="font-mono font-semibold">{displayOrderId}</code> to track or inquire about your order.
+                    </p>
+                  </div>
+                )}
                 <div className="flex justify-center gap-4">
                   <button
                     type="button"
