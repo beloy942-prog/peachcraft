@@ -1204,7 +1204,7 @@ export const getOrdersList = createServerFn({ method: "GET" }).handler(async () 
   const supabase = getSupabaseServer();
   const { data: orders, error } = await supabase
     .from("orders")
-    .select("id,order_number,user_id,total_amount,status,created_at")
+    .select("id,order_number,user_id,total_amount,status,created_at,shipping_address")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -1226,7 +1226,11 @@ export const getOrdersList = createServerFn({ method: "GET" }).handler(async () 
   return (orders ?? []).map((order) => ({
     id: order.id,
     order_number: order.order_number ?? null,
-    user_email: userMap.get(order.user_id) ?? "Unknown",
+    // Authenticated orders use the profile email; guest orders fall back to
+    // the email captured in shipping_address at checkout.
+    user_email:
+      userMap.get(order.user_id) ??
+      ((order.shipping_address as Record<string, string> | null)?.email ?? "Unknown"),
     total_amount: order.total_amount,
     status: order.status,
     created_at: order.created_at,
@@ -1310,8 +1314,14 @@ export const getOrderDetails = createServerFn({ method: "GET" })
       created_at: order.created_at,
       shipping_address: order.shipping_address ?? null,
       customer: {
-        name: user?.username ?? null,
-        email: user?.email ?? null,
+        // Authenticated orders use the profile; guest orders fall back to the
+        // name/email captured in shipping_address at checkout.
+        name:
+          user?.username ??
+          ((order.shipping_address as Record<string, string> | null)?.name ?? null),
+        email:
+          user?.email ??
+          ((order.shipping_address as Record<string, string> | null)?.email ?? null),
       },
       items: resultItems,
     };
