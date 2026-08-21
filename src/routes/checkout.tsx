@@ -54,6 +54,50 @@ function resolveDisplayOrderId(order: { id: string; order_number?: string | null
   return fallbackDisplayOrderId(order.id, order.created_at ?? new Date().toISOString());
 }
 
+// Reload recovery: the in-progress checkout (step + typed info) is kept in
+// sessionStorage so a browser refresh restores the customer to the same step
+// instead of dropping them back to an empty form.
+const CHECKOUT_DRAFT_KEY = "peachcraft-checkout-draft";
+
+type CheckoutDraft = {
+  step: 1 | 2 | 3 | 4;
+  name: string;
+  email: string;
+  street: string;
+  city: string;
+  province: string;
+  zip: string;
+  paymentMethod: string;
+  displayOrderId: string | null;
+};
+
+function loadCheckoutDraft(): CheckoutDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(CHECKOUT_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CheckoutDraft;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveCheckoutDraft(draft: CheckoutDraft) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(CHECKOUT_DRAFT_KEY, JSON.stringify(draft));
+  } catch {}
+}
+
+function clearCheckoutDraft() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(CHECKOUT_DRAFT_KEY);
+  } catch {}
+}
+
 function CheckoutPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
@@ -98,6 +142,8 @@ function CheckoutPage() {
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [refError, setRefError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [step2Checking, setStep2Checking] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { formatPrice } = useCurrency();
@@ -114,6 +160,51 @@ function CheckoutPage() {
       .then((d) => setClientIp(d.ip))
       .catch(() => {});
   }, []);
+
+  // Restore a saved checkout draft on mount so a reload keeps the customer on
+  // the same step with their info intact. Skipped when an ?orderId= resume
+  // flow is driving the page. Step 4 is only restored when it represents a
+  // real completed order (displayOrderId present) to avoid a fake success screen.
+  useEffect(() => {
+    if (orderIdQuery) {
+      setDraftReady(true);
+      return;
+    }
+    const draft = loadCheckoutDraft();
+    if (!draft) {
+      setDraftReady(true);
+      return;
+    }
+    if (draft.name) setName(draft.name);
+    if (draft.email) setEmail(draft.email);
+    if (draft.street) setStreet(draft.street);
+    if (draft.city) setCity(draft.city);
+    if (draft.province) setProvince(draft.province);
+    if (draft.zip) setZip(draft.zip);
+    if (draft.paymentMethod) setPaymentMethod(draft.paymentMethod);
+    if (draft.displayOrderId) setDisplayOrderId(draft.displayOrderId);
+    if (draft.step === 4 && draft.displayOrderId) {
+      setSuccessMessage(
+        draft.paymentMethod === "gcash"
+          ? "Your payment proof has been submitted. We'll verify and confirm your order shortly."
+          : "Your order is confirmed! We will reach out once it ships.",
+      );
+      setStep(4);
+    } else if (draft.step === 2 || draft.step === 3) {
+      setStep(draft.step);
+    }
+    setDraftReady(true);
+    // Run once on mount; orderIdQuery is stable for the page's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the saved draft in sync with the current checkout state — but only
+  // after the restore attempt, otherwise the first (empty) render would
+  // overwrite the saved draft before it is read.
+  useEffect(() => {
+    if (!draftReady) return;
+    saveCheckoutDraft({ step, name, email, street, city, province, zip, paymentMethod, displayOrderId });
+  }, [draftReady, step, name, email, street, city, province, zip, paymentMethod, displayOrderId]);
 
   // Load admin-managed GCash payment details (fallback to defaults)
   useEffect(() => {
@@ -139,7 +230,9 @@ function CheckoutPage() {
     let mounted = true;
     const userId = authSession.user.id;
     accessTokenRef.current = authSession.access_token;
-    setEmail(authSession.user?.email ?? "");
+    // Prefill from the account, but never overwrite info the customer already
+    // typed or that was restored from a saved checkout draft.
+    setEmail((prev) => prev || authSession.user?.email || "");
 
     (async () => {
       try {
@@ -152,8 +245,8 @@ function CheckoutPage() {
         if (!mounted) return;
         if (profile) {
           setIsVerified(!!profile.email_verified);
-          if (profile.username) setName(profile.username);
-          if (profile.address) setStreet(profile.address);
+          setName((prev) => prev || profile.username || "");
+          setStreet((prev) => prev || profile.address || "");
         } else {
           setIsVerified(false);
         }
@@ -240,11 +333,14 @@ function CheckoutPage() {
     },
   });
 
-  const handlePlaceOrder = async () => {
+  // Validates the shipping form + cart contents. Returns the parsed values on
+  // success, or null after surfacing field/general errors. Does NOT create
+  // anything — order creation only happens on the explicit confirm action.
+  const validateCheckout = async (): Promise<z.infer<typeof shippingSchema> | null> => {
     setFormErrors({});
     if (items.length === 0) {
       setFormErrors({ general: "Your cart is empty." });
-      return false;
+      return null;
     }
     const result = shippingSchema.safeParse({
       name, email, street, city, province, zip,
@@ -255,8 +351,11 @@ function CheckoutPage() {
       for (const issue of result.error.issues) {
         newErrors[issue.path[0] as string] = issue.message;
       }
+      // General message too: the review step renders only `general`, so a
+      // shipping-field problem must still be visible when confirming there.
+      newErrors.general = "Please go back and complete your shipping details.";
       setFormErrors(newErrors);
-      return false;
+      return null;
     }
 
     // Validate cart items against the database
@@ -282,12 +381,21 @@ function CheckoutPage() {
         }
         window.dispatchEvent(new Event("peachcraft-cart-updated"));
         setFormErrors({ general: msg });
-        return false;
+        return null;
       }
     } catch (_err) {
       // If validation fails, just proceed and let createOrder handle it
     }
 
+    return result.data;
+  };
+
+  // Creates the order. Only called from the explicit confirm action on the
+  // review step — never on "continue" navigation. Reuses an order from a
+  // previous attempt so a partial failure (e.g. screenshot upload failed)
+  // never double-orders.
+  const placeOrder = async (parsed: z.infer<typeof shippingSchema>): Promise<string | null> => {
+    if (orderId) return orderId;
     try {
       const res = await createOrderMutation.mutateAsync({
         items: items.map((item) => ({
@@ -296,24 +404,24 @@ function CheckoutPage() {
           price_at_purchase: item.price,
         })),
         shipping_address: {
-          name: result.data.name,
-          email: result.data.email,
-          street: result.data.street,
-          city: result.data.city,
-          province: result.data.province,
-          zip: result.data.zip,
+          name: parsed.name,
+          email: parsed.email,
+          street: parsed.street,
+          city: parsed.city,
+          province: parsed.province,
+          zip: parsed.zip,
         },
         total_amount: totalAmount,
-        payment_method: result.data.payment_method,
+        payment_method: parsed.payment_method,
       });
       if (res && res.id) {
         setOrderId(res.id);
         setDisplayOrderId(res.order_number ?? fallbackDisplayOrderId(res.id, new Date().toISOString()));
       }
-      return true;
+      return res?.id ?? null;
     } catch (error) {
       setFormErrors({ general: error instanceof Error ? error.message : "Unable to place order." });
-      return false;
+      return null;
     }
   };
 
@@ -328,6 +436,9 @@ function CheckoutPage() {
     reader.readAsDataURL(file);
   };
 
+  // The explicit confirm action for GCash orders: validates everything, THEN
+  // creates the order, uploads the proof, and links it. A reload before this
+  // point never leaves an order behind.
   const handleSubmitProof = async () => {
     setRefError(null);
     setFormErrors({});
@@ -339,12 +450,12 @@ function CheckoutPage() {
       setFormErrors({ screenshot: "Please upload a screenshot of your payment." });
       return;
     }
-    const email = gcashEmail.trim();
-    if (!email) {
+    const proofEmail = gcashEmail.trim();
+    if (!proofEmail) {
       setFormErrors({ gcashEmail: "Please enter your email address." });
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(proofEmail)) {
       setFormErrors({ gcashEmail: "Please enter a valid email address." });
       return;
     }
@@ -358,6 +469,14 @@ function CheckoutPage() {
     } catch {
       // continue anyway — DB constraint will catch duplicates
     }
+
+    // Shipping + cart validation at confirm time, so the order is only
+    // created once every check has passed.
+    const parsed = await validateCheckout();
+    if (!parsed) return;
+
+    const createdOrderId = await placeOrder(parsed);
+    if (!createdOrderId) return;
 
     const reader = new FileReader();
     const base64 = await new Promise<string>((resolve, reject) => {
@@ -378,21 +497,24 @@ function CheckoutPage() {
       return;
     }
 
-    if (!orderId) {
-      setFormErrors({ general: "Order ID not found. Please try again." });
-      return;
-    }
-
     try {
       await submitProofMutation.mutateAsync({
-        order_id: orderId,
+        order_id: createdOrderId,
         gcash_reference_number: gcashRefNo.trim(),
         screenshot_url: screenshotUrl,
-        customer_email: email,
+        customer_email: proofEmail,
       });
     } catch (err) {
       setFormErrors({ general: err instanceof Error ? err.message : "Failed to submit payment proof." });
     }
+  };
+
+  // The explicit confirm action for COD orders: validate, then create.
+  // createOrderMutation.onSuccess handles cart clear + confirmation screen.
+  const handleConfirmCodOrder = async () => {
+    const parsed = await validateCheckout();
+    if (!parsed) return;
+    await placeOrder(parsed);
   };
 
   const handleCopyOrderId = () => {
@@ -422,7 +544,7 @@ function CheckoutPage() {
       if (order.payment_method === "gcash" && order.payment_status === "pending" && order.status === "pending") {
         setPaymentMethod("gcash");
         setOrderId(order.id);
-        setDisplayOrderId(generateDisplayOrderId(order.id));
+        setDisplayOrderId(resolveDisplayOrderId(order));
         setStep(3);
       } else {
         setResumeError("This order isn't ready to resume. Check your order history.");
@@ -434,7 +556,10 @@ function CheckoutPage() {
     }
   };
 
-  if (checkingAuth || (orderIdQuery && !resumeOrderLoaded && isAuthenticated)) {
+  // While logged in, wait for the profile's email_verified flag before
+  // rendering anything — otherwise the unverified gate would flash (or stick,
+  // if the profile fetch fails) on every reload.
+  if (checkingAuth || (isAuthenticated && isVerified === null) || (orderIdQuery && !resumeOrderLoaded && isAuthenticated)) {
     return (
       <section className="bg-cream py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
@@ -517,7 +642,7 @@ function CheckoutPage() {
 
   // Email verification check: only applies to authenticated users.
   // Guests don't have profiles, so skip this gate entirely for them.
-  if (isAuthenticated && !isVerified) {
+  if (isAuthenticated && isVerified === false) {
     return (
       <section className="bg-cream py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
@@ -688,60 +813,67 @@ function CheckoutPage() {
                   <button
                     type="button"
                     onClick={async () => {
+                      setStep2Checking(true);
                       try {
-                        const ok = await handlePlaceOrder();
-                        if (!ok) return;
+                        const parsed = await validateCheckout();
+                        if (!parsed) return;
+                        // No order is created here — the customer confirms on
+                        // the review step. Reloading before that point leaves
+                        // no order behind.
                         setStep(3);
-                      } catch (err) {
-                        setFormErrors({ general: err instanceof Error ? err.message : "Unable to continue." });
+                      } finally {
+                        setStep2Checking(false);
                       }
                     }}
-                    disabled={createOrderMutation.isPending}
+                    disabled={step2Checking}
                     className="inline-flex flex-1 items-center justify-center rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-soft btn-bounce-hover hover:bg-primary/90 disabled:opacity-50"
                   >
-                    {createOrderMutation.isPending ? "Processing..." : "Continue to Review"}
+                    {step2Checking ? "Checking..." : "Continue to Review"}
                   </button>
                 </div>
               </>
             )}
 
-            {/* Step 3: Review & payment */}
+            {/* Step 3: Review & confirm */}
             {step === 3 && paymentMethod === "cash_on_delivery" && (
-              <div className="text-center py-10">
-                <Loader2 className="w-8 h-8 animate-spin text-foreground/40 mx-auto mb-4" />
-                <p className="text-foreground/70">Placing your order...</p>
-              </div>
+              <>
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Review</span>
+                  <h1 className="mt-3 font-display text-4xl text-brown">Confirm your order</h1>
+                  <p className="mt-1 text-foreground/75 text-sm">Review your details, then confirm to place your order.</p>
+                </div>
+                {formErrors.general ? <div className="rounded-3xl bg-red-50 p-4 text-sm text-red-700">{formErrors.general}</div> : null}
+                <div className="rounded-2xl bg-background border border-border p-6 space-y-2 text-sm">
+                  <p><span className="text-foreground/50">Ship to: </span>{name}, {street}, {city}, {province} {zip}</p>
+                  <p><span className="text-foreground/50">Contact: </span>{email}</p>
+                  <p><span className="text-foreground/50">Payment: </span>Cash on Delivery</p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStep(2)}
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground btn-bounce-hover shadow-soft"
+                  >
+                    <ArrowLeft className="w-4 h-4" /> Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmCodOrder}
+                    disabled={createOrderMutation.isPending}
+                    className="inline-flex flex-1 items-center justify-center rounded-full bg-wine px-5 py-3 text-sm font-semibold text-white shadow-soft btn-bounce-hover hover:bg-wine/90 disabled:opacity-50"
+                  >
+                    {createOrderMutation.isPending ? "Placing order..." : "Confirm Order"}
+                  </button>
+                </div>
+              </>
             )}
 
-            {step === 3 && paymentMethod === "gcash" && !orderId && (
-              <div className="text-center py-10">
-                {createOrderMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-8 h-8 animate-spin text-foreground/40 mx-auto mb-4" />
-                    <p className="text-foreground/70">Creating your order...</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-red-600 text-sm mb-4">Failed to create order. Please try again.</p>
-                    {formErrors.general && <p className="text-red-600 text-sm mb-4">{formErrors.general}</p>}
-                    <button
-                      type="button"
-                      onClick={handlePlaceOrder}
-                      className="inline-flex rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground"
-                    >
-                      Retry
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-
-            {step === 3 && paymentMethod === "gcash" && orderId && displayOrderId && (
+            {step === 3 && paymentMethod === "gcash" && (
               <>
                 <div>
                   <span className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">GCash Payment</span>
                   <h1 className="mt-3 font-display text-3xl text-brown">Pay via GCash</h1>
-                  <p className="mt-1 text-foreground/75 text-sm">Send payment to the GCash account below, then submit your proof.</p>
+                  <p className="mt-1 text-foreground/75 text-sm">Send payment to the GCash account below, then submit your proof to place your order.</p>
                 </div>
 
                 {formErrors.general ? <div className="rounded-3xl bg-red-50 p-4 text-sm text-red-700">{formErrors.general}</div> : null}
@@ -773,27 +905,33 @@ function CheckoutPage() {
                         <p className="text-xs text-foreground/50 uppercase tracking-wide">Amount to Pay</p>
                         <p className="text-2xl font-bold text-foreground">{formatPrice(totalAmount)}</p>
                       </div>
-                      <div>
-                        <p className="text-xs text-foreground/50 uppercase tracking-wide">Your Order ID</p>
-                        <div className="flex items-center gap-2">
-                          <code className="font-mono text-sm font-bold bg-muted px-2 py-1 rounded">{displayOrderId}</code>
-                          <button
-                            type="button"
-                            onClick={handleCopyOrderId}
-                            className="inline-flex items-center gap-1 text-xs text-wine hover:underline"
-                          >
-                            {copied ? "Copied!" : <><Copy className="w-3 h-3" /> Copy</>}
-                          </button>
+                      {displayOrderId ? (
+                        <div>
+                          <p className="text-xs text-foreground/50 uppercase tracking-wide">Your Order ID</p>
+                          <div className="flex items-center gap-2">
+                            <code className="font-mono text-sm font-bold bg-muted px-2 py-1 rounded">{displayOrderId}</code>
+                            <button
+                              type="button"
+                              onClick={handleCopyOrderId}
+                              className="inline-flex items-center gap-1 text-xs text-wine hover:underline"
+                            >
+                              {copied ? "Copied!" : <><Copy className="w-3 h-3" /> Copy</>}
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div>
+                          <p className="text-xs text-foreground/50 uppercase tracking-wide">Order ID</p>
+                          <p className="text-sm text-foreground/60">Generated when you submit your proof below.</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="rounded-xl bg-amber-50 p-4 text-xs text-amber-800 space-y-1">
                     <p className="font-semibold">📌 Important Instructions:</p>
                     <p>1. Open your GCash app and send the exact amount shown above.</p>
-                    <p>2. In the payment note, include your Order ID: <strong className="font-mono">{displayOrderId}</strong></p>
-                    <p>3. Take a screenshot of the confirmation screen.</p>
-                    <p>4. Fill in the reference number and upload the screenshot below.</p>
+                    <p>2. Take a screenshot of the confirmation screen.</p>
+                    <p>3. Fill in the reference number and upload the screenshot below. Your order is placed once you submit.</p>
                   </div>
                 </div>
 
@@ -914,14 +1052,14 @@ function CheckoutPage() {
                 <div className="flex justify-center gap-4">
                   <button
                     type="button"
-                    onClick={() => navigate({ to: "/shop" })}
+                    onClick={() => { clearCheckoutDraft(); navigate({ to: "/shop" }); }}
                     className="inline-flex rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground btn-bounce-hover shadow-soft"
                   >
                     Continue Shopping
                   </button>
                   <button
                     type="button"
-                    onClick={() => navigate({ to: "/" })}
+                    onClick={() => { clearCheckoutDraft(); navigate({ to: "/" }); }}
                     className="inline-flex rounded-full border border-border bg-background px-6 py-3 text-sm font-semibold text-foreground btn-bounce-hover shadow-soft"
                   >
                     Back to Home
