@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { createOrder, getCustomerOrderById, getUserActiveOrderStatus, uploadPaymentProof, submitGCashProof, checkDuplicateReference, validateCartItems } from "@/lib/api/supabase.functions";
+import { createOrder, getCustomerOrderById, getGuestOrder, getUserActiveOrderStatus, uploadPaymentProof, submitGCashProof, checkDuplicateReference, validateCartItems } from "@/lib/api/supabase.functions";
 import { useAuth } from "@/lib/auth-context";
 import { getSupabaseClient } from "@/lib/supabase";
 import { getStoreDetails } from "@/lib/api/storeDetails.functions";
@@ -82,6 +82,8 @@ function CheckoutPage() {
   } | null>(null);
   const [resumeOrderLoaded, setResumeOrderLoaded] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  const [guestResumeEmail, setGuestResumeEmail] = useState("");
+  const [guestResumeLoading, setGuestResumeLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const { loading: authLoading, isAuthenticated, session: authSession, user: authUser } = useAuth();
   const checkingAuth = authLoading;
@@ -401,6 +403,37 @@ function CheckoutPage() {
     }
   };
 
+  const handleGuestResume = async () => {
+    const trimmed = guestResumeEmail.trim();
+    if (!trimmed) {
+      setResumeError("Please enter the email you used at checkout.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setResumeError("Please enter a valid email address.");
+      return;
+    }
+    setResumeError(null);
+    setGuestResumeLoading(true);
+    try {
+      const order = await getGuestOrder({ data: { orderId: orderIdQuery!, email: trimmed } });
+      setResumeOrder(order);
+      setResumeOrderLoaded(true);
+      if (order.payment_method === "gcash" && order.payment_status === "pending" && order.status === "pending") {
+        setPaymentMethod("gcash");
+        setOrderId(order.id);
+        setDisplayOrderId(generateDisplayOrderId(order.id));
+        setStep(3);
+      } else {
+        setResumeError("This order isn't ready to resume. Check your order history.");
+      }
+    } catch (err) {
+      setResumeError(err instanceof Error ? err.message : "Unable to resume this order.");
+    } finally {
+      setGuestResumeLoading(false);
+    }
+  };
+
   if (checkingAuth || (orderIdQuery && !resumeOrderLoaded && isAuthenticated)) {
     return (
       <section className="bg-cream py-16">
@@ -430,6 +463,50 @@ function CheckoutPage() {
   }
 
   // Guest checkout is allowed — no auth gate here.
+
+  // Guest resume: an orderId query with no account needs the checkout email.
+  if (orderIdQuery && !isAuthenticated && !resumeOrder) {
+    return (
+      <section className="bg-cream py-16">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
+          <div className="rounded-3xl bg-card p-12 shadow-soft space-y-5">
+            <h1 className="font-display text-2xl text-brown">Resume your order</h1>
+            <p className="text-sm text-foreground/75 max-w-md mx-auto">
+              Enter the email you used at checkout to load your order.
+            </p>
+            <div className="space-y-2.5 text-left max-w-sm mx-auto">
+              <input
+                type="email"
+                value={guestResumeEmail}
+                onChange={(e) => setGuestResumeEmail(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleGuestResume(); }}
+                placeholder="your@email.com"
+                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+              {resumeError && <p className="text-xs font-medium text-red-500">{resumeError}</p>}
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={handleGuestResume}
+                disabled={guestResumeLoading}
+                className="inline-flex rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground btn-bounce-hover shadow-soft disabled:opacity-50"
+              >
+                {guestResumeLoading ? "Loading..." : "Load Order"}
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/checkout", search: { orderId: undefined } })}
+                className="inline-flex rounded-full px-5 py-3 text-sm font-medium text-foreground/70 hover:text-foreground"
+              >
+                Continue without resuming
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   const canResumeOrder = Boolean(
     resumeOrder &&

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
-import { getCustomerOrders, cancelCustomerOrder } from "@/lib/api/supabase.functions";
+import { getCustomerOrders, cancelCustomerOrder, getGuestOrders, cancelGuestOrder } from "@/lib/api/supabase.functions";
 import { useCurrency } from "@/lib/currency-context";
 import { Package, XCircle, Loader2, ChevronRight } from "lucide-react";
 
@@ -86,17 +86,21 @@ function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestSearched, setGuestSearched] = useState(false);
+  const [guestLookupError, setGuestLookupError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("active");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { loading: authLoading, session: authSession } = useAuth();
+  const isGuest = !authSession;
 
   useEffect(() => {
     if (authLoading) return;
     if (!authSession) {
-      navigate({ to: "/login", search: { redirect: "/orders" } });
+      setLoading(false);
       return;
     }
 
@@ -117,11 +121,38 @@ function OrdersPage() {
     return () => { mounted = false; };
   }, [authLoading, authSession, navigate]);
 
+  const handleGuestLookup = async () => {
+    const trimmed = guestEmail.trim();
+    if (!trimmed) {
+      setGuestLookupError("Please enter the email you used at checkout.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setGuestLookupError("Please enter a valid email address.");
+      return;
+    }
+    setGuestLookupError(null);
+    setLoading(true);
+    try {
+      const data = await getGuestOrders({ data: { email: trimmed } });
+      setOrders(data);
+      setGuestSearched(true);
+    } catch {
+      setGuestLookupError("We couldn't find any orders for that email. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCancel = async (orderId: string) => {
     setConfirmId(null);
     setCancellingId(orderId);
     try {
-      await cancelCustomerOrder({ data: { orderId, accessToken: accessToken ?? undefined } });
+      if (isGuest) {
+        await cancelGuestOrder({ data: { orderId, email: guestEmail.trim() } });
+      } else {
+        await cancelCustomerOrder({ data: { orderId, accessToken: accessToken ?? undefined } });
+      }
       setOrders((prev) =>
         prev.map((o) => (o.id === orderId ? { ...o, status: "cancelled" } : o)),
       );
@@ -144,6 +175,56 @@ function OrdersPage() {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <Loader2 className="w-7 h-7 animate-spin text-gray-300" />
+      </div>
+    );
+  }
+
+  // Guest mode: no account required — find orders by checkout email.
+  if (isGuest && !guestSearched) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="max-w-lg mx-auto px-5 py-8 sm:py-12">
+          <h1 className="text-[26px] font-display font-medium text-gray-900 -tracking-[0.03em] mb-7">
+            My Orders
+          </h1>
+          <div className="bg-white rounded-2xl shadow-[0_2px_24px_-6px_rgba(0,0,0,0.10)] px-6 py-8 text-center space-y-5">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+              <Package className="w-6 h-6 text-gray-500" />
+            </div>
+            <div>
+              <p className="text-[16px] font-semibold text-gray-900">Find your orders</p>
+              <p className="mt-1.5 text-sm text-gray-500">
+                No account needed. Enter the email you used at checkout to view and track your orders.
+              </p>
+            </div>
+            <div className="space-y-2.5 text-left">
+              <input
+                type="email"
+                value={guestEmail}
+                onChange={(e) => setGuestEmail(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleGuestLookup(); }}
+                placeholder="your@email.com"
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/20"
+              />
+              {guestLookupError && (
+                <p className="text-xs font-medium text-red-600">{guestLookupError}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleGuestLookup}
+              className="inline-flex rounded-full bg-gray-900 px-6 py-2.5 text-sm font-medium text-white shadow-[0_2px_12px_-3px_rgba(0,0,0,0.25)] hover:bg-gray-800 transition-colors"
+            >
+              Find Orders
+            </button>
+            <p className="text-xs text-gray-400">
+              Have an account?{" "}
+              <Link to="/login" search={{ redirect: "/orders" }} className="font-medium text-gray-600 underline">
+                Sign in
+              </Link>
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -195,7 +276,9 @@ function OrdersPage() {
           <div className="bg-white rounded-2xl shadow-[0_2px_24px_-6px_rgba(0,0,0,0.10)] px-8 py-14 text-center space-y-4">
             <Package className="w-10 h-10 mx-auto text-gray-300" />
             <p className="text-sm font-medium text-gray-400">
-              {orders.length === 0 ? "No orders yet." : `No orders in "${activeTab.label}".`}
+              {orders.length === 0
+                ? (isGuest ? "No orders found for this email." : "No orders yet.")
+                : `No orders in "${activeTab.label}".`}
             </p>
             {orders.length === 0 && (
               <Link

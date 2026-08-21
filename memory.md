@@ -43,7 +43,7 @@ after every working session** — it is the authoritative session state.
   - `shop.tsx` — shop layout shell; `shop/index.tsx` — grid + **availability filter + sort** (see §8 for the sort bug); `shop/$category.tsx`; `shop/$id.tsx` — product detail (Add to cart / **Buy it now**, see §9 M6).
   - `search.tsx` — live search via `searchProducts`.
   - `cart.tsx`, `checkout.tsx` (3-step state machine, §8), `order-confirmation.tsx`.
-  - `login.tsx`, `signup.tsx`, `verify-email.tsx`, `profile.tsx`, `orders.tsx`, `account/*`.
+  - `login.tsx`, `signup.tsx`, `verify-email.tsx`, `profile.tsx`, `orders.tsx` (**guest email lookup, no login required — §8**), `account/*`.
   - `about.tsx`, `contact.tsx` (**form is decorative — §9 M3**), `shipping-policy.tsx`.
   - `$.tsx` — 404.
 - **Admin** (guarded by `src/lib/adminMiddleware.ts` + server `verifyAdmin()`):
@@ -149,11 +149,14 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 | `validateCartItems` | 1788 | POST | returns available/unavailable lists |
 | `saveCartForUser` | 1829 | POST | upsert `carts` on `user_id` |
 | `getCartForUser` | 1869 | POST | read cart items |
-| `getMyOrders` | 1895 | POST | user orders (short) |
-| `getCustomerOrders` | 1932 | POST | user orders + items + product names/images |
-| `getCustomerOrderById` | 1982 | POST | ownership-guarded order fetch (resume) |
-| `cancelCustomerOrder` | 2029 | POST | ownership; **restores stock**; status → cancelled |
-| `verifyEmail` | 2092 | POST | token/email verification |
+| `getMyOrders` | 1876 | POST | user orders (short) |
+| `getCustomerOrders` | 1913 | POST | user orders + items + product names/images |
+| `getCustomerOrderById` | 1963 | POST | ownership-guarded order fetch (resume) |
+| `getGuestOrders` | 2012 | POST | **guest list by shipping_address.email (user_id IS NULL, case-insensitive, ≤50) + items** |
+| `getGuestOrder` | 2061 | POST | **guest single by orderId + email match + items (checkout resume)** |
+| `cancelCustomerOrder` | 2116 | POST | ownership; **restores stock**; status → cancelled |
+| `cancelGuestOrder` | 2181 | POST | **guest cancel: user_id IS NULL + email match; restores stock; status → cancelled** |
+| `verifyEmail` | 2234 | POST | token/email verification |
 | `checkEmailVerification` | 2144 | POST | |
 | `updateProfile` | 2162 | POST | username 2-50, address 5-200 |
 | `changePassword` | 2217 | POST | |
@@ -212,6 +215,7 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 - Step 3: GCash panel (QR/number/name/amount/order-id from `gcashConfig`, `:675-722`) + proof form (ref, email, screenshot; `:724-786`) + Back / **Submit Payment Proof** (`:788-807`). Success → `setStep(4)` success screen. Failure (`!orderId`) → "Failed to create order" + retry.
 - Resume: `/checkout?orderId=` → `getCustomerOrderById`; if gcash+pending → sets paymentMethod/orderId/displayOrderId/step 3. **Displayed amount is live-cart `totalAmount` (`:98`) — §9 H1.**
 - Guard: **NONE** — guest checkout is fully supported. Unauthenticated visitors see the shipping form directly. Optional "Have an account? Log in" banner shown (user-initiated only, never forced). Previous auto-redirect to `/login` after 3s was removed. Cart page (`cart.tsx`) also allows unauthenticated checkout. Turnstile required for guest orders. `orders.user_id` is NULL for guest orders. Server-side: `createOrder` accepts optional `accessToken`; `submitGCashProof` verifies guest ownership via `shipping_address.email`. **IP order rate limit (`order_attempts`) REMOVED (2026-08-20) — no limit on orders per IP; the one-active-order guard still applies to authenticated users.**
+- **Guest orders (2026-08-20)**: `/orders` no longer redirects logged-out visitors to `/login` — it shows a "Find your orders" email form → `getGuestOrders`. Guests get full parity: list w/ items, tabs, cancel (`cancelGuestOrder`), and checkout resume (`/checkout?orderId=` prompts for email → `getGuestOrder`). Ownership = `shipping_address.email` match (weak proof — §9 #22). Cart stays localStorage-only (same device).
 
 ### Shop filters (`shop/index.tsx`)
 - Availability: all / in-stock / out-of-stock (`:48-52`).
@@ -260,6 +264,8 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 19. **L6** — Admin orders realtime `user_email: "Loading..."` never resolves.
 20. **L7** — `getAdminProducts` field gap → admin thumbnails + tag-search broken.
 21. **L8** — username/address maxLength not mirrored client-side.
+22. **Guest order email ownership (Medium, by design)** — `getGuestOrders`/`getGuestOrder`/`cancelGuestOrder`/`submitGCashProof` prove ownership via `shipping_address.email` match only (no account). Anyone holding the email can view the order (incl. full shipping address) and cancel a pending one. Accepted for this store; list view shows city/province only. Consider a device token + `guest_token` column if this becomes a problem.
+23. **Guest resume race (Low)** — guest `?orderId=` resume passes `orderIdQuery!` — safe because the prompt only renders when `orderIdQuery` is truthy.
 
 ### Conventions for agents
 - One concern per change; report unrelated issues, don't fix them in the same change.
@@ -298,9 +304,10 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 ---
 
 ## Self-Check
-- ✅ HEAD `9fb0966`, `main` synced with `origin/main`.
+- ✅ HEAD `9fb0966`, `main` synced with `origin/main`; **new guest-orders work UNCOMMITTED** (supabase.functions.ts + orders.tsx + checkout.tsx).
 - ✅ Wine token, getOrderDetails null-safe fix, GCash settings (code + migration 006), email validation — committed.
 - ✅ 53/53 E2E DB procedure checks pass; submit button confirmed by 2 live pending proofs.
+- ✅ **Guest orders feature: `getGuestOrders`/`cancelGuestOrder` added, `getGuestOrder` now returns items; `/orders` guest email lookup (no login redirect); `/checkout?orderId=` guest resume prompt. 12/12 new DB checks pass (`_guest_check.cjs`); `npx tsc --noEmit` clean.**
 - ✅ Full route map, function catalog, env catalog, and known-issue status current.
 - ✅ Guest checkout fully implemented and verified: `cart.tsx` gate removed (was `!userEmail` → "Sign in to checkout"), `checkout.tsx` redirect removed (was auto-redirect after 3s), `checkout.tsx` "Authentication Required" block removed, `isVerified` gate now `isAuthenticated && !isVerified`. `createOrder` accepts optional `accessToken` with guest path (turnstile required, no auth/email-verification/active-order checks). `submitGCashProof` verifies guest ownership via `shipping_address.email`. `uploadPaymentProof` auth removed. `getGuestOrder` added. `CartToast.tsx` "Check out" button fixed (`/cart` → `/checkout`). `npx tsc --noEmit` clean. Manual trace: unauthenticated → add to cart → cart page → checkout → shipping → payment → order placed → confirmation. No forced redirect, no blocking screen.
 - ⚠️ OPEN: migration 006 not applied to Supabase; Vercel 500 (#2); admin dashboard crash (#1); audit fixes H1/M1-M6/L1-L8 pending user confirmation.

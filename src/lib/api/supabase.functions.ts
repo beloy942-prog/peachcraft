@@ -2030,6 +2030,56 @@ export const getCustomerOrderById = createServerFn({ method: "POST" })
     };
   });
 
+// Guest orders list: all orders placed without an account, matched by the
+// email stored in shipping_address. No session required.
+export const getGuestOrders = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ email: z.string().email() }))
+  .handler(async ({ data }) => {
+    const supabase = getSupabaseServer();
+    const email = data.email.toLowerCase();
+
+    const { data: orders, error } = await supabase
+      .from("orders")
+      .select(`
+        id,order_number,status,total_amount,created_at,shipping_address,payment_method,payment_status,
+        order_items(
+          id,qty,price_at_purchase,
+          product_id,
+          products(name,images)
+        )
+      `)
+      .is("user_id", null)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    const guestOrders = (orders ?? [])
+      .filter((o) => {
+        const addr = o.shipping_address as Record<string, string> | null;
+        return addr?.email?.toLowerCase() === email;
+      })
+      .slice(0, 50);
+
+    return guestOrders.map((o) => ({
+      id: o.id,
+      order_number: o.order_number ?? null,
+      status: o.status,
+      total_amount: o.total_amount,
+      created_at: o.created_at,
+      shipping_address: o.shipping_address as Record<string, string> | null,
+      payment_method: o.payment_method,
+      payment_status: o.payment_status,
+      items: ((o as any).order_items ?? []).map((item: any) => ({
+        product_id: item.product_id,
+        name: item.products?.name ?? "Unknown",
+        image: item.products?.images?.[0] ?? null,
+        qty: item.qty,
+        price_at_purchase: item.price_at_purchase,
+      })),
+    }));
+  });
+
 // Guest order lookup: verify ownership via order ID + matching email in shipping_address.
 // No session required — guests retrieve orders by their email and order ID.
 export const getGuestOrder = createServerFn({ method: "POST" })
@@ -2044,7 +2094,14 @@ export const getGuestOrder = createServerFn({ method: "POST" })
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id,order_number,status,total_amount,payment_method,payment_status,shipping_address,user_id")
+      .select(`
+        id,order_number,status,total_amount,created_at,payment_method,payment_status,shipping_address,user_id,
+        order_items(
+          id,qty,price_at_purchase,
+          product_id,
+          products(name,images)
+        )
+      `)
       .eq("id", data.orderId)
       .single();
 
@@ -2068,9 +2125,17 @@ export const getGuestOrder = createServerFn({ method: "POST" })
       order_number: order.order_number ?? null,
       status: order.status,
       total_amount: order.total_amount,
+      created_at: order.created_at,
       payment_method: order.payment_method,
       payment_status: order.payment_status,
       shipping_address: order.shipping_address as Record<string, string> | null,
+      items: ((order as any).order_items ?? []).map((item: any) => ({
+        product_id: item.product_id,
+        name: item.products?.name ?? "Unknown",
+        image: item.products?.images?.[0] ?? null,
+        qty: item.qty,
+        price_at_purchase: item.price_at_purchase,
+      })),
     };
   });
 
@@ -2111,6 +2176,61 @@ export const cancelCustomerOrder = createServerFn({ method: "POST" })
 
     if (order.user_id !== userId) {
       throw new Error("You can only cancel your own orders.");
+    }
+
+    if (order.status !== "pending") {
+      throw new Error("Only pending orders can be cancelled. This order has already been processed.");
+    }
+
+    // Restore stock for each item
+    const { data: items } = await supabase
+      .from("order_items")
+      .select("product_id,qty")
+      .eq("order_id", data.orderId);
+
+    for (const item of items ?? []) {
+      await restoreStock(supabase, item.product_id, item.qty);
+    }
+
+    const { error: updateError } = await supabase
+      .from("orders")
+      .update({ status: "cancelled" })
+      .eq("id", data.orderId);
+
+    if (updateError) throw updateError;
+
+    return { success: true, message: "Order cancelled successfully." };
+  });
+
+// Guest order cancel: same rules as cancelCustomerOrder but ownership is
+// proven by the email in shipping_address instead of an account token.
+export const cancelGuestOrder = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      orderId: z.string().uuid(),
+      email: z.string().email(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const supabase = getSupabaseServer();
+
+    const { data: order, error: fetchError } = await supabase
+      .from("orders")
+      .select("id,status,user_id,shipping_address")
+      .eq("id", data.orderId)
+      .single();
+
+    if (fetchError || !order) {
+      throw fetchError ?? new Error("Order not found.");
+    }
+
+    if (order.user_id !== null) {
+      throw new Error("This is not a guest order. Please log in to cancel it.");
+    }
+
+    const shippingEmail = (order.shipping_address as Record<string, string>)?.email;
+    if (!shippingEmail || shippingEmail.toLowerCase() !== data.email.toLowerCase()) {
+      throw new Error("Email does not match this order.");
     }
 
     if (order.status !== "pending") {
