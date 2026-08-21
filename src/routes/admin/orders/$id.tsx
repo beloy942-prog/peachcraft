@@ -7,7 +7,8 @@ import { updateOrderStatus, getOrderDetails, type OrderDetail } from "@/lib/api/
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const statusOptions = ["pending", "confirmed", "shipped", "delivered", "cancelled"];
+const statusOptions = ["pending", "confirmed", "shipped", "delivered", "cancelled"] as const;
+type OrderStatus = (typeof statusOptions)[number];
 const statusColors: Record<string, string> = {
   pending: "bg-[var(--blush)] text-[var(--foreground)]",
   confirmed: "bg-[var(--sage)] text-[var(--foreground)]",
@@ -23,7 +24,7 @@ export const Route = createFileRoute("/admin/orders/$id")({
 function AdminOrderDetailPage() {
   const params = Route.useParams();
   const navigate = useNavigate();
-  const [status, setStatus] = useState<string>(statusOptions[0]);
+  const [status, setStatus] = useState<OrderStatus>(statusOptions[0]);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -35,7 +36,7 @@ function AdminOrderDetailPage() {
 
   useEffect(() => {
     if (data) {
-      setStatus(data.status);
+      setStatus(data.status as OrderStatus);
     }
   }, [data]);
 
@@ -116,7 +117,7 @@ function AdminOrderDetailPage() {
           <label className="mt-4 block text-sm font-semibold text-[var(--foreground)]/80">Status</label>
           <select
             value={status}
-            onChange={(event) => setStatus(event.target.value)}
+            onChange={(event) => setStatus(event.target.value as OrderStatus)}
             className="mt-2 w-full rounded-[var(--radius)] border border-[var(--border)] bg-[var(--card)] px-4 py-3 font-sans text-[var(--foreground)] outline-none"
           >
             {statusOptions.map((option) => (

@@ -522,9 +522,22 @@ export const createOrder = createServerFn({ method: "POST" })
     }
 
     // --- Create order ---
+    // Total is recomputed from server-verified prices (each item's
+    // price_at_purchase was already matched against products.price above),
+    // so a tampered client-side total_amount can never be persisted.
+    // Shipping/tax mirror the constants shown in checkout.tsx so the stored
+    // amount always matches what the customer was charged.
+    const SHIPPING_FEE = 150;
+    const TAX_AMOUNT = 0;
+    const serverTotal = Math.round(
+      (data.items.reduce((sum, item) => sum + item.price_at_purchase * item.qty, 0) +
+        SHIPPING_FEE +
+        TAX_AMOUNT) * 100,
+    ) / 100;
+
     const orderPayload: Record<string, unknown> = {
       user_id: userId, // NULL for guest orders
-      total_amount: data.total_amount,
+      total_amount: serverTotal,
       status: "pending",
       shipping_address: data.shipping_address,
       payment_method: data.payment_method,
@@ -802,6 +815,25 @@ export const verifyGCashPayment = createServerFn({ method: "POST" })
 
     if (payment.status !== "pending") {
       throw new Error("This payment has already been processed.");
+    }
+
+    // Guard: if the order was cancelled after the proof was submitted,
+    // reject the stale proof instead of resurrecting the cancelled order.
+    if (data.action === "approve") {
+      const { data: targetOrder } = await supabase
+        .from("orders")
+        .select("status")
+        .eq("id", payment.order_id)
+        .single();
+
+      if (targetOrder?.status === "cancelled") {
+        const nowRejected = new Date().toISOString();
+        await supabase
+          .from("gcash_payments")
+          .update({ status: "rejected", verified_at: nowRejected })
+          .eq("id", data.payment_id);
+        throw new Error("This order was already cancelled — its payment proof has been rejected.");
+      }
     }
 
     const now = new Date().toISOString();
@@ -1328,7 +1360,7 @@ export const getOrderDetails = createServerFn({ method: "GET" })
   });
 
 export const updateOrderStatus = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ id: z.string().uuid(), status: z.string().min(1), accessToken: z.string().optional() }))
+  .inputValidator(z.object({ id: z.string().uuid(), status: z.enum(["pending", "confirmed", "shipped", "delivered", "cancelled"]), accessToken: z.string().optional() }))
   .handler(async ({ data }) => {
     await verifyAdmin(undefined, data.accessToken);
     const supabase = getSupabaseServer();
@@ -2209,6 +2241,14 @@ export const cancelCustomerOrder = createServerFn({ method: "POST" })
 
     if (updateError) throw updateError;
 
+    // Reject any still-pending GCash proofs so a later admin approval
+    // cannot resurrect this cancelled order.
+    await supabase
+      .from("gcash_payments")
+      .update({ status: "rejected", verified_at: new Date().toISOString() })
+      .eq("order_id", data.orderId)
+      .eq("status", "pending");
+
     return { success: true, message: "Order cancelled successfully." };
   });
 
@@ -2263,6 +2303,14 @@ export const cancelGuestOrder = createServerFn({ method: "POST" })
       .eq("id", data.orderId);
 
     if (updateError) throw updateError;
+
+    // Reject any still-pending GCash proofs so a later admin approval
+    // cannot resurrect this cancelled order.
+    await supabase
+      .from("gcash_payments")
+      .update({ status: "rejected", verified_at: new Date().toISOString() })
+      .eq("order_id", data.orderId)
+      .eq("status", "pending");
 
     return { success: true, message: "Order cancelled successfully." };
   });
