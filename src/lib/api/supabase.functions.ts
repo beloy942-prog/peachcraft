@@ -16,6 +16,10 @@ export type ProductRow = {
   stock_qty?: number | null;
   is_active?: boolean | null;
   created_at?: string | null;
+  materials?: string | null;
+  dimensions?: string | null;
+  care_instructions?: string | null;
+  return_policy?: string | null;
 };
 
 export type ProductFormData = {
@@ -28,6 +32,10 @@ export type ProductFormData = {
   stock_qty: number;
   is_active: boolean;
   images: string[];
+  materials: string;
+  dimensions: string;
+  care_instructions: string;
+  return_policy: string;
 };
 
 export type OrderSummary = {
@@ -557,7 +565,7 @@ export const createOrder = createServerFn({ method: "POST" })
       throw orderError ?? new Error("Failed to create order.");
     }
 
-    // Generate human-readable order_number (PTT-YYYYMMDD-XXX) and persist it
+    // Generate human-readable order_number (PCH-YYYYMMDD-XXX) and persist it
     const { data: updatedOrder, error: updateOrderError } = await supabase
       .from("orders")
       .update({ order_number: generateOrderId(order.id, new Date().toISOString()) })
@@ -593,7 +601,7 @@ function generateOrderId(orderUuid: string, createdAt: string): string {
   const date = new Date(createdAt);
   const yyyymmdd = date.toISOString().slice(0, 10).replace(/-/g, "");
   const suffix = orderUuid.replace(/-/g, "").slice(0, 3).toUpperCase();
-  return `PTT-${yyyymmdd}-${suffix}`;
+  return `PCH-${yyyymmdd}-${suffix}`;
 }
 
 const KNOWN_IMAGE_MAGIC_BYTES: Record<string, Uint8Array[]> = {
@@ -989,7 +997,9 @@ export const getAdminProducts = createServerFn({ method: "GET" }).handler(async 
   const supabase = getSupabaseServer();
   const { data, error } = await supabase
     .from("products")
-    .select("id,name,price,category,stock_qty,is_active")
+    .select(
+      "id,name,price,description,images,tag,swatch,category,stock_qty,is_active,created_at,materials,dimensions,care_instructions,return_policy",
+    )
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -1134,7 +1144,9 @@ export const getProductById = createServerFn({ method: "POST" })
     const supabase = getSupabaseServer();
     const { data: product, error } = await supabase
       .from("products")
-      .select("id,name,price,description,images,tag,swatch,category,stock_qty,is_active,created_at")
+      .select(
+        "id,name,price,description,images,tag,swatch,category,stock_qty,is_active,created_at,materials,dimensions,care_instructions,return_policy",
+      )
       .eq("id", data.id)
       .single();
 
@@ -1157,6 +1169,10 @@ export const createProduct = createServerFn({ method: "POST" })
       stock_qty: z.number().min(0),
       is_active: z.boolean(),
       images: z.array(z.string()).optional(),
+      materials: z.string().max(5000).optional(),
+      dimensions: z.string().max(2000).optional(),
+      care_instructions: z.string().max(5000).optional(),
+      return_policy: z.string().max(5000).optional(),
       accessToken: z.string().optional(),
     }),
   )
@@ -1176,6 +1192,10 @@ export const createProduct = createServerFn({ method: "POST" })
         stock_qty: data.stock_qty,
         is_active: data.is_active,
         images: data.images ?? [],
+        materials: data.materials?.trim() || null,
+        dimensions: data.dimensions?.trim() || null,
+        care_instructions: data.care_instructions?.trim() || null,
+        return_policy: data.return_policy?.trim() || null,
       })
       .select("id")
       .single();
@@ -1200,6 +1220,10 @@ export const updateProduct = createServerFn({ method: "POST" })
       stock_qty: z.number().min(0),
       is_active: z.boolean(),
       images: z.array(z.string()).optional(),
+      materials: z.string().max(5000).optional(),
+      dimensions: z.string().max(2000).optional(),
+      care_instructions: z.string().max(5000).optional(),
+      return_policy: z.string().max(5000).optional(),
       accessToken: z.string().optional(),
     }),
   )
@@ -1219,6 +1243,10 @@ export const updateProduct = createServerFn({ method: "POST" })
         stock_qty: data.stock_qty,
         is_active: data.is_active,
         images: data.images ?? [],
+        materials: data.materials?.trim() || null,
+        dimensions: data.dimensions?.trim() || null,
+        care_instructions: data.care_instructions?.trim() || null,
+        return_policy: data.return_policy?.trim() || null,
       })
       .eq("id", data.id)
       .select("id")
@@ -1600,6 +1628,7 @@ export const uploadProductImage = createServerFn({ method: "POST" })
     const base64String = data.base64.replace(/^data:.*;base64,/, "");
     const buffer = Buffer.from(base64String, "base64");
 
+    // Product images allow up to 20MB pre-compression (client compresses before sending).
     validateImageBuffer(buffer);
 
     const filePath = `public/${Date.now()}-${data.fileName}`;

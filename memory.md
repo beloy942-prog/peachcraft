@@ -66,19 +66,23 @@ after every working session** — it is the authoritative session state.
 ## 3. Data Model (Supabase)
 
 ### Base tables (created in dashboard; docs in `Fully-Detailed-Schema.md` + `supabase-current-schema.md`)
-- `products` — `id uuid pk, name, price numeric, description text, images jsonb[], tag, swatch, category, stock_qty int, is_active bool, created_at, brand`.
+- `products` — `id uuid pk, name, price numeric, description text, images jsonb[], tag, swatch, category, stock_qty int, is_active bool, created_at`. **NO `brand` column live (verified 2026-08-24; old `[verify]` resolved as absent).** Migration 010 adds nullable text `materials, dimensions, care_instructions, return_policy` (PENDING — see migration status).
 - `orders` — `id uuid pk, user_id uuid (NULLABLE — live data has NULLs), total_amount numeric, status (pending|confirmed|shipped|delivered|cancelled), shipping_address jsonb, payment_method (cash_on_delivery|gcash|null), payment_status (pending|paid|awaiting_verification|failed|null), created_at`.
 - `order_items` — `order_id → orders (cascade), product_id → products, qty, price_at_purchase`.
 - `gcash_payments` — `id, order_id → orders, gcash_reference_number (UNIQUE), screenshot_url, customer_email, status (pending|verified|rejected), submitted_at, verified_at`.
 - `users` (auth), `profiles` — `id → auth.users (FK fk_profiles_auth_user — CANNOT insert fake ids), email, username, address, email_verified bool, created_at`.
 
-### Migration-created tables (`sql/migrations/001-006`)
-- `001`: `signup_attempts` (IP rate limit 5/hr), `carts` (`user_id` NOT NULL unique, `items jsonb`).
-- `002`: `cart_items` (`user_id, product_id, qty`, unique per user+product).
-- `003`: `cart_add_attempts` (rate limit).
-- `004`: RLS on carts + `gcash_payments` support (order `payment_method`/`payment_status`).
-- `005`: `login_attempts` (**columns: `ip` + nullable `user_id` + `created_at` — NO `email` column**), `order_attempts` (`ip`, `user_id`).
-- `006` (`006_add_gcash_settings.sql`, NEW, **COMMITTED BUT NOT APPLIED to Supabase**): adds `gcash_number`, `gcash_account_name`, `gcash_qr` to `website_settings`. Until applied, admin GCash settings save fails with column-not-found.
+### Migration-created tables (`sql/migrations/001-010`) — application status verified live 2026-08-24
+- `001`: `signup_attempts` (IP rate limit 5/hr), `carts` (`user_id` NOT NULL unique, `items jsonb`). Applied.
+- `002`: `cart_items` (`user_id, product_id, qty`, unique per user+product). Applied.
+- `003`: `cart_add_attempts` (rate limit). Applied.
+- `004`: RLS on carts + `gcash_payments` support (order `payment_method`/`payment_status`). Applied.
+- `005`: `login_attempts` (**columns: `ip` + nullable `user_id` + `created_at` — NO `email` column**), `order_attempts` (`ip`, `user_id`). Applied.
+- `006`: **TWO files share the number** (`006_add_gcash_settings.sql` + `006_add_payment_settings.sql`; the latter is a subset). **APPLIED** (gcash_number/account_name/gcash_qr verified live) — earlier "committed but not applied" note was stale.
+- `007_add_gcash_qr_url.sql`: `website_settings.gcash_qr_url`. APPLIED (verified live).
+- `008_guest_checkout_support.sql`: guest-email partial index on orders + comments. Applied.
+- `009_add_order_number.sql`: `orders.order_number` text + unique index + PTT- backfill. APPLIED (verified live).
+- `010_add_product_details.sql` (**NEW 2026-08-24 — NOT YET APPLIED to Supabase; all 4 columns probed MISSING live**): adds nullable text `materials, dimensions, care_instructions, return_policy` to `products`. **MUST be applied via Supabase SQL editor BEFORE deploying the product-details code**, or admin create/updateProduct fails with unknown-column. Idempotent (`ADD COLUMN IF NOT EXISTS`). Note: supabase-js cannot run DDL and no DB password / Management-API PAT exists in env, so application is a dashboard step (same as all prior migrations).
 
 ### Constraints & gotchas
 - `gcash_reference_number` UNIQUE (app catches PG `23505`).
@@ -134,12 +138,12 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 | `getAdminPaymentsPendingOrders` | 880 | GET | gcash + pending |
 | `getAdminPaymentSummary` | 896 | GET | 4 counts |
 | `getAdminPayment` | 930 | GET | single payment + order |
-| `getAdminProducts` | 956 | GET | **selects fewer fields than type → thumbnails/tag-search broken (§9 L7)** |
+| `getAdminProducts` | 995 | GET | **selects FULL ProductRow field list incl. the 4 detail columns (L7 thumbnails FIXED 2026-08-24)** |
 | `toggleProductActive` | 971 | POST | admin |
 | `deleteProduct` | 989 | POST | deletes images from R2/Supabase storage then row |
-| `getProductById` | 1100 | POST | full product row |
-| `createProduct` | 1117 | POST | admin insert |
-| `updateProduct` | 1159 | POST | admin update |
+| `getProductById` | 1141 | POST | full product row incl. `materials, dimensions, care_instructions, return_policy` |
+| `createProduct` | 1160 | POST | admin insert; 4 optional detail fields (zod `.optional()` + max len, blank→NULL) |
+| `updateProduct` | 1210 | POST | admin update; same 4 optional detail fields |
 | `getOrdersList` | 1203 | GET | admin; user_email = profile email, **falls back to `shipping_address.email` for guests** ("Unknown" only if neither exists) |
 | `getOrderDetails` | 1236 | GET | admin; **FIXED: `let user=null; if(order.user_id){…maybeSingle()}` — no throw on null/missing profile**; **customer.name/email fall back to `shipping_address` for guest orders** |
 | `updateOrderStatus` | 1319 | POST | admin; **restores stock when status → cancelled** |
@@ -175,7 +179,7 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 ## 6. Payments — GCash Flow
 
 - **Admin-managed config**: `DEFAULT_GCASH_CONFIG` (`checkout.tsx:17-21`: number `0917 123 4567`, name `Peach Craft PH`, placeholder QR) → replaced by `gcashConfig` state loaded from `getStoreDetails()` on mount, per-field fallback to defaults (`checkout.tsx:110-126`). After migration 006, admin edits number/name/QR via `admin/website-settings.tsx`.
-- **Order ID for the customer**: `PTT-yyyymmdd-XXX` (`generateOrderId`, `supabase.functions.ts:583-588`; client uses `generateDisplayOrderId`).
+- **Order ID for the customer**: `PCH-yyyymmdd-XXX` (`generateOrderId`, `supabase.functions.ts:583-588`; client uses `generateDisplayOrderId`). Orders created before the 2026-08 rename keep their original `PTT-` prefix.
 - **Flow**:
   1. `createOrder` → `orders(status: pending, payment_status: pending)` for gcash; `paid` for COD. **Deducts stock atomically** (per-item `.gte("stock_qty", qty)` conditional update), rolls back all prior deductions on any failure via `restoreStock`.
   2. Customer submits proof → `submitGCashProof`: dup-check ref (app + `23505`), ownership (`order.user_id === userId`), `payment_method === "gcash"`, `payment_status === "pending"`. Inserts `gcash_payments(pending)` + order → `awaiting_verification`.
@@ -219,6 +223,9 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 - Guard: **NONE** — guest checkout is fully supported. Unauthenticated visitors see the shipping form directly. Optional "Have an account? Log in" banner shown (user-initiated only, never forced). Previous auto-redirect to `/login` after 3s was removed. Cart page (`cart.tsx`) also allows unauthenticated checkout. Turnstile required for guest orders. `orders.user_id` is NULL for guest orders. Server-side: `createOrder` accepts optional `accessToken`; `submitGCashProof` verifies guest ownership via `shipping_address.email`. **IP order rate limit (`order_attempts`) REMOVED (2026-08-20) — no limit on orders per IP; the one-active-order guard still applies to authenticated users.**
 - **Guest orders (2026-08-20)**: `/orders` no longer redirects logged-out visitors to `/login` — it shows a "Find your orders" email form → `getGuestOrders`. Guests get full parity: list w/ items, tabs, cancel (`cancelGuestOrder`), and checkout resume (`/checkout?orderId=` prompts for email → `getGuestOrder`). Ownership = `shipping_address.email` match (weak proof — §9 #22). Cart stays localStorage-only (same device).
 - **Server total includes shipping (2026-08-21)**: `createOrder` recomputes `total_amount = Σ(price×qty) + SHIPPING_FEE(150) + TAX_AMOUNT(0)` — constants mirror `checkout.tsx` (`shippingFee=150`, `taxAmount=0`). If checkout ever shows different fees, BOTH sides must be updated together.
+
+### Shop detail page (`shop/$id.tsx`)
+- Materials / Dimensions / Care Instructions / Return Policy accordions (`:112-137`) are **data-driven from the 4 nullable product columns (2026-08-24)**; sections with NULL/blank values are not rendered at all (old hardcoded generic copy removed). Expanded max-height raised to `max-h-[60rem]` for longer admin copy. Old products with all four NULL show no accordion block.
 
 ### Shop filters (`shop/index.tsx`)
 - Availability: all / in-stock / out-of-stock (`:48-52`).
@@ -265,7 +272,7 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 17. **L4** — Wishlist heart cosmetic (`ProductCard.tsx` ~139).
 18. **L5** — COD step-3 latent stuck-spinner branch (unreachable today).
 19. **L6** — Admin orders realtime `user_email: "Loading..."` never resolves.
-20. **L7** — `getAdminProducts` field gap → admin thumbnails + tag-search broken.
+20. **L7 — `getAdminProducts` field gap (FIXED 2026-08-24)** — select list now covers all `ProductRow` fields (incl. images → admin thumbnails work, and the 4 detail columns).
 21. **L8** — username/address maxLength not mirrored client-side.
 22. **Guest order email ownership (Medium, by design)** — `getGuestOrders`/`getGuestOrder`/`cancelGuestOrder`/`submitGCashProof` prove ownership via `shipping_address.email` match only (no account). Anyone holding the email can view the order (incl. full shipping address) and cancel a pending one. Accepted for this store; list view shows city/province only. Consider a device token + `guest_token` column if this becomes a problem.
 23. **Guest resume race (Low)** — guest `?orderId=` resume passes `orderIdQuery!` — safe because the prompt only renders when `orderIdQuery` is truthy.
@@ -309,8 +316,8 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 
 ---
 
-## Self-Check
-- ✅ HEAD `9fb0966`, `main` synced with `origin/main`; **guest-orders + admin guest-identity fixes + security fixes UNCOMMITTED** (supabase.functions.ts, orders.tsx, checkout.tsx, admin/orders/$id.tsx, memory.md).
+- ✅ HEAD `bb3e5a8`; **uncommitted at session end (2026-08-24): memory.md, `admin-auth.ts`, `ProductForm.tsx`, `supabase.functions.ts`** (pre-session WIP: image size limit 5→20MB + admin-auth tweaks; plus this session's product-detail changes).
+- ✅ **Product detail fields (2026-08-24): migration `010_add_product_details.sql` created (4 nullable text cols on products; PENDING apply); types (`Product`, `ProductRow`, `ProductFormData`) + shared admin `ProductForm.tsx` "Details & policies" card (both create/edit routes) + `createProduct`/`updateProduct` zod+write + `getProductById`/`getAdminProducts` selects; storefront accordions now per-product, blank-safe. `npx tsc --noEmit` clean; 0 new eslint findings on changed lines. L7 fixed as side effect.**
 - ✅ **Admin ↔ customer/guest connectivity: 25/27 → fixed 2 gaps (getOrdersList + getOrderDetails now fall back to `shipping_address.email`/`.name` for guests); re-test ALL PASS.**
 - ✅ **Security adversarial test (`_sec_test.cjs`, deleted after run): cross-identity attacks BLOCKED (wrong-email cancel, authed-order-as-guest, non-pending cancel), dup ref blocked (409), dup order_number blocked (409 unique idx). Found+FIXED: cancelled-order resurrection (#24), client total tampering (#4), arbitrary status strings (#25). B4/C2/C3 were false positives — service-role bypass by design; RLS verified solid by effect (#26).**
 - ✅ **Fix verification (`_fix_verify.cjs`): V1 resurrection guard fires (proof rejected, order stays cancelled), V2 cancel auto-rejects pending proofs, V3 stale-proof chain dead-ended, V4 server total recompute correct. Cleanup leftovers 0.**
@@ -322,5 +329,5 @@ Convention: `createServerFn({ method })` with `.inputValidator(z.object(...))` (
 - ✅ **Checkout reload fix (2026-08-21): order creation deferred to the step-3 confirm click (`placeOrder`, retry-safe via `orderId` reuse); step 2 only validates; sessionStorage draft restores step + typed info on reload (step 4 only with real displayOrderId); profile prefill no longer clobbers restored values; server total now includes SHIPPING_FEE 150 + TAX 0 (regression from tampering fix repaired, verified `_checkout_verify.cjs` 2/2 PASS). `npx tsc --noEmit` clean.**
 - ✅ **Checkout reload follow-up fixes (2026-08-21): (1) `isVerified === false` gate + spinner while `null` — the old `!isVerified` treated "unknown" as unverified, flashing/sticking "Email Verification Required" on every authed reload; (2) draft-sync effect gated by `draftReady` so the first empty render can't overwrite the saved draft before restore reads it; (3) zod failures in `validateCheckout` also set `formErrors.general` so confirm never fails silently on the review step.**
 - ✅ **Test-data cleanup debt paid (2026-08-21): `_sec_test.cjs` cleanup had crashed (`dupIds is not defined`) leaving 2 active orders on testing@gmail.com → one-active-order guard blocked all new orders ("submit not working" report). Both orders + items deleted; account now has 0 orders. LESSON: test scripts must define cleanup vars before try block / tolerate partial setup failure.**
-- ⚠️ OPEN: migration 006 not applied to Supabase; Vercel 500 (#2); admin dashboard crash (#1); audit fixes H1/M1/M3-M6/L1-L8 pending user confirmation; optional DB CHECK constraint on orders.status (#25 follow-up).
-- ⚠️ `[verify]`: Resend app-side usage site; React Query provider file; `brand` column presence in `products`.
+- ⚠️ OPEN: **migration 010 (product detail columns) not applied to Supabase — apply before deploying product-details code**; Vercel 500 (#2); admin dashboard crash (#1); audit fixes H1/M1/M3-M6/L1-L6/L8 pending user confirmation; optional DB CHECK constraint on orders.status (#25 follow-up).
+- ⚠️ `[verify]`: Resend app-side usage site; React Query provider file. (`brand` column resolved 2026-08-24: absent from live products.)

@@ -114,27 +114,30 @@ function ProductDetailPage() {
       key: "materials",
       icon: <HelpCircle className="w-5 h-5 text-foreground/60 shrink-0" />,
       title: "Materials",
-      content: "Our crafts are shaped by hand with high-quality, lightweight air-dry clay, colored with custom-mixed pastels, and sealed with multiple layers of durable protective varnish (in matte or semi-gloss finish). Every single piece is a unique original creation.",
+      content: product?.materials,
     },
     {
       key: "dimensions",
       icon: <Ruler className="w-5 h-5 text-foreground/60 shrink-0" />,
       title: "Dimensions",
-      content: "Each fake cake container is approximately 12cm in diameter and 15cm in height. Due to the hand-sculpted nature, please allow minor variations of 1–2cm in sizes.",
+      content: product?.dimensions,
     },
     {
       key: "care",
       icon: <Clipboard className="w-5 h-5 text-foreground/60 shrink-0" />,
       title: "Care Instructions",
-      content: "Clay crafts are fragile and decorative only (not waterproof or food-safe). Protect your pieces from moisture, water, extreme heat, and direct sunlight. To clean, wipe gently with a dry, soft paint brush or soft cloth.",
+      content: product?.care_instructions,
     },
     {
       key: "returns",
       icon: <RotateCcw className="w-5 h-5 text-foreground/60 shrink-0" />,
       title: "Return Policy",
-      content: "Standard orders ship from Manila within 1–3 business days. Free shipping is automatically applied to orders ₱1,000 and above! Refunds are eligible on unopened items within 7 days of package delivery. If an item arrives broken, contact us with photos within 48 hours for a replacement.",
+      content: product?.return_policy,
     },
-  ];
+  ].filter(
+    (section): section is typeof section & { content: string } =>
+      typeof section.content === "string" && section.content.trim().length > 0,
+  );
 
   if (isLoading) {
     return (
@@ -413,40 +416,44 @@ function ProductDetailPage() {
               </button>
             </div>
 
-            {/* Collapsible Accordions */}
-            <div className="border-t border-border/80">
-              {accordions.map(({ key, icon, title, content }) => (
-                <div key={key} className="border-b border-border/80">
-                  <button
-                    type="button"
-                    onClick={() => toggleAccordion(key)}
-                    aria-expanded={openAccordion === key}
-                    className="w-full flex items-center justify-between gap-3 py-4 text-left group"
-                  >
-                    <span className="flex items-center gap-3 text-sm font-semibold text-foreground">
-                      {icon}
-                      {title}
-                    </span>
-                    <ChevronDown
+            {/* Collapsible Accordions — only rendered for fields the admin filled in */}
+            {accordions.length > 0 && (
+              <div className="border-t border-border/80">
+                {accordions.map(({ key, icon, title, content }) => (
+                  <div key={key} className="border-b border-border/80">
+                    <button
+                      type="button"
+                      onClick={() => toggleAccordion(key)}
+                      aria-expanded={openAccordion === key}
+                      className="w-full flex items-center justify-between gap-3 py-4 text-left group"
+                    >
+                      <span className="flex items-center gap-3 text-sm font-semibold text-foreground">
+                        {icon}
+                        {title}
+                      </span>
+                      <ChevronDown
+                        className={cn(
+                          "w-4 h-4 text-foreground/50 shrink-0 transition-transform duration-300",
+                          openAccordion === key && "rotate-180",
+                        )}
+                      />
+                    </button>
+                    <div
                       className={cn(
-                        "w-4 h-4 text-foreground/50 shrink-0 transition-transform duration-300",
-                        openAccordion === key && "rotate-180",
+                        "overflow-hidden transition-all duration-300 ease-in-out",
+                        openAccordion === key
+                          ? "max-h-[60rem] opacity-100 pb-4"
+                          : "max-h-0 opacity-0",
                       )}
-                    />
-                  </button>
-                  <div
-                    className={cn(
-                      "overflow-hidden transition-all duration-300 ease-in-out",
-                      openAccordion === key ? "max-h-48 opacity-100 pb-4" : "max-h-0 opacity-0",
-                    )}
-                  >
-                    <p className="text-xs text-foreground/70 leading-relaxed">
-                      {content}
-                    </p>
+                    >
+                      <p className="text-xs text-foreground/70 leading-relaxed whitespace-pre-line">
+                        {content}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

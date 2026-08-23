@@ -108,6 +108,10 @@ export type Product = {
   stock_qty?: number | null;
   is_active?: boolean | null;
   created_at?: string | null;
+  materials?: string | null;
+  dimensions?: string | null;
+  care_instructions?: string | null;
+  return_policy?: string | null;
 };
 
 export type Profile = {

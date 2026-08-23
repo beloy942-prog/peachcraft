@@ -22,6 +22,10 @@ export type ProductFormData = {
   stock_qty: number;
   is_active: boolean;
   images: string[];
+  materials: string;
+  dimensions: string;
+  care_instructions: string;
+  return_policy: string;
 };
 
 interface ProductFormProps {
@@ -53,6 +57,10 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
   const [stockQtyInput, setStockQtyInput] = useState(initialData?.stock_qty != null ? String(initialData.stock_qty) : "");
   const [isActive, setIsActive] = useState(initialData?.is_active ?? true);
   const [images, setImages] = useState<string[]>(initialData?.images ?? []);
+  const [materials, setMaterials] = useState(initialData?.materials ?? "");
+  const [dimensions, setDimensions] = useState(initialData?.dimensions ?? "");
+  const [careInstructions, setCareInstructions] = useState(initialData?.care_instructions ?? "");
+  const [returnPolicy, setReturnPolicy] = useState(initialData?.return_policy ?? "");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -86,6 +94,10 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
     setStockQtyInput(initialData?.stock_qty != null ? String(initialData.stock_qty) : "");
     setIsActive(initialData?.is_active ?? true);
     setImages(initialData?.images ?? []);
+    setMaterials(initialData?.materials ?? "");
+    setDimensions(initialData?.dimensions ?? "");
+    setCareInstructions(initialData?.care_instructions ?? "");
+    setReturnPolicy(initialData?.return_policy ?? "");
   }, [initialData]);
 
   const categoryString = selectedCategories.join(", ");
@@ -285,6 +297,10 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
         stock_qty: stockQty,
         is_active: isActive,
         images,
+        materials,
+        dimensions,
+        care_instructions: careInstructions,
+        return_policy: returnPolicy,
       },
       accessToken,
     );
@@ -302,6 +318,10 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
     setStockQtyInput(initialData?.stock_qty != null ? String(initialData.stock_qty) : "");
     setIsActive(initialData?.is_active ?? true);
     setImages(initialData?.images ?? []);
+    setMaterials(initialData?.materials ?? "");
+    setDimensions(initialData?.dimensions ?? "");
+    setCareInstructions(initialData?.care_instructions ?? "");
+    setReturnPolicy(initialData?.return_policy ?? "");
     setUploadError(null);
     setFormError(null);
     setShowCategoryInput(false);
@@ -396,6 +416,75 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
               rows={5}
               className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               placeholder="Describe product details, materials, and benefits..."
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Details & Policies */}
+      <div className="rounded-xl border bg-white p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">Details &amp; policies</h3>
+        <p className="text-xs text-gray-400 mb-4">
+          Optional. Shown on the product page only when filled in — leave blank to hide a section.
+        </p>
+        <div className="grid gap-5 md:grid-cols-2">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="product-materials">Materials</Label>
+              <span className="text-xs text-gray-400">{materials.length}</span>
+            </div>
+            <textarea
+              id="product-materials"
+              value={materials}
+              onChange={(e) => setMaterials(e.target.value)}
+              rows={4}
+              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              placeholder="e.g. Hand-shaped air-dry clay, sealed with matte varnish..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="product-dimensions">Dimensions</Label>
+              <span className="text-xs text-gray-400">{dimensions.length}</span>
+            </div>
+            <textarea
+              id="product-dimensions"
+              value={dimensions}
+              onChange={(e) => setDimensions(e.target.value)}
+              rows={4}
+              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              placeholder="e.g. Approx. 12cm diameter × 15cm height..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="product-care">Care instructions</Label>
+              <span className="text-xs text-gray-400">{careInstructions.length}</span>
+            </div>
+            <textarea
+              id="product-care"
+              value={careInstructions}
+              onChange={(e) => setCareInstructions(e.target.value)}
+              rows={4}
+              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              placeholder="e.g. Decorative only; keep dry and away from direct sunlight..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="product-return-policy">Return policy</Label>
+              <span className="text-xs text-gray-400">{returnPolicy.length}</span>
+            </div>
+            <textarea
+              id="product-return-policy"
+              value={returnPolicy}
+              onChange={(e) => setReturnPolicy(e.target.value)}
+              rows={4}
+              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              placeholder="e.g. Refunds on unopened items within 7 days of delivery..."
             />
           </div>
         </div>
