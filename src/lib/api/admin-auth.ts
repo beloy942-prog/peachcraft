@@ -89,10 +89,13 @@ function getMagicBytes(buffer: { subarray(start: number, end: number): Uint8Arra
   return buffer.subarray(0, 12);
 }
 
-export function validateImageBuffer(buffer: { length: number; subarray(start: number, end: number): Uint8Array }) {
-  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-  if (buffer.length > MAX_FILE_SIZE) {
-    throw new Error("File too large. Maximum size is 5MB.");
+export function validateImageBuffer(
+  buffer: { length: number; subarray(start: number, end: number): Uint8Array },
+  maxFileSizeBytes = 5 * 1024 * 1024,
+) {
+  if (buffer.length > maxFileSizeBytes) {
+    const maxMb = Math.round(maxFileSizeBytes / 1024 / 1024);
+    throw new Error(`File too large. Maximum size is ${maxMb}MB.`);
   }
 
   if (buffer.length < 4) {

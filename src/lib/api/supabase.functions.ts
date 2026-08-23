@@ -1629,7 +1629,7 @@ export const uploadProductImage = createServerFn({ method: "POST" })
     const buffer = Buffer.from(base64String, "base64");
 
     // Product images allow up to 20MB pre-compression (client compresses before sending).
-    validateImageBuffer(buffer);
+    validateImageBuffer(buffer, 20 * 1024 * 1024);
 
     const filePath = `public/${Date.now()}-${data.fileName}`;
 

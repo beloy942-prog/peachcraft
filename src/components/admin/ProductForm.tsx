@@ -104,7 +104,7 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
   const tagString = selectedTags.join(", ");
 
   const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-  const MAX_SIZE_MB = 5;
+  const MAX_SIZE_MB = 20;
 
   const fileToBase64 = (file: File): Promise<string | null> =>
     new Promise((resolve, reject) => {
@@ -698,7 +698,7 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
             Choose files
           </Button>
           <p className="mt-2 text-[10px] text-gray-400">
-            JPG, PNG, WEBP, GIF · max 5MB · up to 8 images
+            JPG, PNG, WEBP, GIF · max 20MB · up to 8 images
           </p>
           <input
             ref={fileInputRef}
