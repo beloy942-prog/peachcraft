@@ -1,1 +1,0 @@
-const t=["Necklaces","Airdry Clay Crafts","Fake Cakes"];function a(e){return e?e.split(",").map(r=>r.trim()).filter(Boolean):[]}function i(e=[]){return t.filter(r=>!e.includes(r))}export{t as P,i as g,a as n};
