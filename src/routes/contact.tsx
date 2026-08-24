@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Mail, Instagram, Send, Music2, Phone } from "lucide-react";
+import { toast } from "sonner";
 import { getStoreDetails } from "@/lib/api/storeDetails.functions";
+import { submitContactMessage } from "@/lib/api/contact.functions";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({
@@ -17,8 +19,41 @@ export const Route = createFileRoute("/contact")({
 
 function ContactPage() {
   const [sent, setSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
   const [storeDetails, setStoreDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  const handleSend = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (submitting) return;
+    // UX-only pre-checks; zod on the server function is the real gate.
+    if (!name.trim() || !message.trim()) {
+      toast.error("Please fill in your name and message.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast.error("Please enter a valid email address.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await submitContactMessage({
+        data: { name: name.trim(), email: email.trim(), message: message.trim() },
+      });
+      setSent(true);
+      setName("");
+      setEmail("");
+      setMessage("");
+      toast.success(result.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -65,26 +100,27 @@ function ContactPage() {
         </div>
 
         <form
-          onSubmit={(e) => { e.preventDefault(); setSent(true); }}
+          onSubmit={handleSend}
           className="bg-card rounded-3xl p-8 shadow-card space-y-4"
         >
           <div>
             <label htmlFor="name" className="block text-sm font-semibold text-brown mb-1.5">Name</label>
-            <input id="name" required className="w-full h-11 px-4 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
+            <input id="name" required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} className="w-full h-11 px-4 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
           <div>
             <label htmlFor="email" className="block text-sm font-semibold text-brown mb-1.5">Email</label>
-            <input id="email" type="email" required className="w-full h-11 px-4 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
+            <input id="email" type="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} className="w-full h-11 px-4 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
           <div>
             <label htmlFor="msg" className="block text-sm font-semibold text-brown mb-1.5">Message</label>
-            <textarea id="msg" required rows={5} className="w-full px-4 py-3 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
+            <textarea id="msg" required rows={5} maxLength={2000} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
           <button
             type="submit"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-primary-foreground font-semibold shadow-soft hover:-translate-y-0.5 transition-transform"
+            disabled={submitting}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-primary-foreground font-semibold shadow-soft hover:-translate-y-0.5 transition-transform disabled:opacity-60"
           >
-            {sent ? "Sent! Talk soon" : <>Send message <Send className="w-4 h-4" /></>}
+            {submitting ? <>Sending... <Send className="w-4 h-4 animate-pulse" /></> : sent ? "Sent! Talk soon" : <>Send message <Send className="w-4 h-4" /></>}
           </button>
         </form>
       </div>

@@ -1427,6 +1427,50 @@ export const updateOrderStatus = createServerFn({ method: "POST" })
     return updated[0];
   });
 
+export const deleteOrder = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ id: z.string().uuid(), accessToken: z.string().optional() }))
+  .handler(async ({ data }) => {
+    await verifyAdmin(undefined, data.accessToken);
+    const supabase = getSupabaseServer();
+
+    const { data: order, error: fetchError } = await supabase
+      .from("orders")
+      .select("id,status")
+      .eq("id", data.id)
+      .single();
+
+    if (fetchError || !order) {
+      throw fetchError ?? new Error("Order not found.");
+    }
+
+    // Stock accounting on hard delete:
+    // - createOrder deducts stock; cancel flows restore it. So a cancelled
+    //   order no longer holds a deduction — restoring again would inflate
+    //   inventory. Any other status still holds one and must be returned.
+    if (order.status !== "cancelled") {
+      const { data: items } = await supabase
+        .from("order_items")
+        .select("product_id,qty")
+        .eq("order_id", data.id);
+
+      for (const item of items ?? []) {
+        await restoreStock(supabase, item.product_id, item.qty);
+      }
+    }
+
+    // Single statement: order_items (cascade via migration 013) and
+    // gcash_payments (cascade since migration 004) are removed atomically
+    // by the DB — no orphaned children possible.
+    const { error: deleteError } = await supabase.from("orders").delete().eq("id", data.id);
+
+    if (deleteError) {
+      console.error("[deleteOrder] delete failed:", deleteError.message);
+      throw new Error("Unable to delete this order. Please try again.");
+    }
+
+    return { success: true };
+  });
+
 export type AnalyticsData = {
   revenueSeries: { date: string; revenue: number }[];
   statusSeries: { status: string; count: number }[];

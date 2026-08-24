@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { Instagram, Music2, Mail, Sparkles, ChevronDown } from "lucide-react";
-import { useState, type ChangeEvent } from "react";
+import { Instagram, Music2, Mail, Sparkles } from "lucide-react";
+import { toast } from "sonner";
+import { useState, type ChangeEvent, type FormEvent } from "react";
+import { subscribeNewsletter } from "@/lib/api/newsletter.functions";
 
 const regionOptions = [
   { value: "ph", label: "Philippines (PHP ₱)", code: "PHP", symbol: "₱", locale: "en-PH" },
@@ -9,23 +11,10 @@ const regionOptions = [
   { value: "au", label: "Australia (AUD A$)", code: "AUD", symbol: "A$", locale: "en-AU" },
 ];
 
-const paymentMethods = [
-  {
-    key: "gcash",
-    label: "GCash",
-    badgeClass: "bg-[#00A5E3] text-white",
-    icon: (
-      <svg viewBox="0 0 120 40" className="h-6 w-auto" aria-hidden="true">
-        <rect width="120" height="40" rx="10" fill="#00A5E3" />
-        <path d="M34 14.2h8.4c3.8 0 6.3 1.8 6.3 5.2 0 3.6-2.8 5.5-6.4 5.5H34V14.2Zm-7.2-6.1h14.4c6.7 0 11.7 3.3 11.7 10.2 0 6.5-4.8 10-11.9 10H26.8V8.1ZM62.2 8.1h7.1l8.1 16.2h-7.3l-1.2-2.5h-7.5l-1.2 2.5h-7.2L62.2 8.1Zm2.1 5.1-2 4h3.9l-1.9-4ZM88 8.1h6.7l7.2 16.2h-7.2l-1-2.2H92l-1 2.2h-7.2L88 8.1Zm2 5.1-1.9 4h3.8l-1.9-4Z" fill="white" />
-      </svg>
-    ),
-  },
-];
-
 export function SiteFooter({ compact = false }: { compact?: boolean }) {
   const [email, setEmail] = useState("");
   const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState(regionOptions[0]);
 
   const handleRegionChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -105,26 +94,27 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
           <p className="text-background/75 text-xs max-w-sm leading-relaxed">
             Be the first to grab restocks and limited pieces before they sell out.
           </p>
-          <div className="space-y-3 pt-2">
-            <div className="space-y-2">
-              <p className="text-[11px] uppercase tracking-[0.24em] text-background/70">Accepted payments</p>
-              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                {paymentMethods.map(({ key, label, badgeClass, icon }) => (
-                  <div
-                    key={key}
-                    className={`inline-flex h-10 items-center justify-center rounded-full border border-white/10 px-3 py-2 shadow-soft ${badgeClass}`}
-                    title={label}
-                  >
-                    {icon}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e: FormEvent<HTMLFormElement>) => {
               e.preventDefault();
-              if (email) setDone(true);
+              if (submitting) return;
+              const trimmed = email.trim();
+              // UX-only pre-check; zod on the server function is the real gate.
+              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+                toast.error("Please enter a valid email address.");
+                return;
+              }
+              setSubmitting(true);
+              try {
+                const result = await subscribeNewsletter({ data: { email: trimmed } });
+                setDone(true);
+                setEmail("");
+                toast.success(result.message);
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+              } finally {
+                setSubmitting(false);
+              }
             }}
             className="flex flex-col gap-2 pt-2"
           >
@@ -136,14 +126,15 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@hello.com"
+                placeholder="you@gmail.com"
                 className="flex-1 bg-transparent px-3 text-sm text-background placeholder:text-background/60 focus:outline-none"
               />
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-full bg-blush text-blush-foreground font-semibold text-xs transition-all btn-bounce-hover shadow-soft whitespace-nowrap"
+                disabled={submitting}
+                className="px-5 py-2.5 rounded-full bg-blush text-blush-foreground font-semibold text-xs transition-all btn-bounce-hover shadow-soft whitespace-nowrap disabled:opacity-60"
               >
-                {done ? "You're in! 🍑" : "Join"}
+                {submitting ? "Joining..." : done ? "You're in! 🍑" : "Join"}
               </button>
             </div>
           </form>

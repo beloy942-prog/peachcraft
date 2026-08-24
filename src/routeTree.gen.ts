@@ -27,6 +27,8 @@ import { Route as ShopIndexRouteImport } from './routes/shop/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as ShopIdRouteImport } from './routes/shop/$id'
 import { Route as AdminWebsiteSettingsRouteImport } from './routes/admin/website-settings'
+import { Route as AdminNewsletterRouteImport } from './routes/admin/newsletter'
+import { Route as AdminMessagesRouteImport } from './routes/admin/messages'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin/analytics'
 import { Route as AdminProductsIndexRouteImport } from './routes/admin/products/index'
 import { Route as AdminPaymentsIndexRouteImport } from './routes/admin/payments/index'
@@ -128,6 +130,16 @@ const AdminWebsiteSettingsRoute = AdminWebsiteSettingsRouteImport.update({
   path: '/website-settings',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminNewsletterRoute = AdminNewsletterRouteImport.update({
+  id: '/newsletter',
+  path: '/newsletter',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminMessagesRoute = AdminMessagesRouteImport.update({
+  id: '/messages',
+  path: '/messages',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
@@ -195,6 +207,8 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/messages': typeof AdminMessagesRoute
+  '/admin/newsletter': typeof AdminNewsletterRoute
   '/admin/website-settings': typeof AdminWebsiteSettingsRoute
   '/shop/$id': typeof ShopIdRoute
   '/admin/': typeof AdminIndexRoute
@@ -223,6 +237,8 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/messages': typeof AdminMessagesRoute
+  '/admin/newsletter': typeof AdminNewsletterRoute
   '/admin/website-settings': typeof AdminWebsiteSettingsRoute
   '/shop/$id': typeof ShopIdRoute
   '/admin': typeof AdminIndexRoute
@@ -254,6 +270,8 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/verify-email': typeof VerifyEmailRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/messages': typeof AdminMessagesRoute
+  '/admin/newsletter': typeof AdminNewsletterRoute
   '/admin/website-settings': typeof AdminWebsiteSettingsRoute
   '/shop/$id': typeof ShopIdRoute
   '/admin/': typeof AdminIndexRoute
@@ -286,6 +304,8 @@ export interface FileRouteTypes {
     | '/signup'
     | '/verify-email'
     | '/admin/analytics'
+    | '/admin/messages'
+    | '/admin/newsletter'
     | '/admin/website-settings'
     | '/shop/$id'
     | '/admin/'
@@ -314,6 +334,8 @@ export interface FileRouteTypes {
     | '/signup'
     | '/verify-email'
     | '/admin/analytics'
+    | '/admin/messages'
+    | '/admin/newsletter'
     | '/admin/website-settings'
     | '/shop/$id'
     | '/admin'
@@ -344,6 +366,8 @@ export interface FileRouteTypes {
     | '/signup'
     | '/verify-email'
     | '/admin/analytics'
+    | '/admin/messages'
+    | '/admin/newsletter'
     | '/admin/website-settings'
     | '/shop/$id'
     | '/admin/'
@@ -504,6 +528,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminWebsiteSettingsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/newsletter': {
+      id: '/admin/newsletter'
+      path: '/newsletter'
+      fullPath: '/admin/newsletter'
+      preLoaderRoute: typeof AdminNewsletterRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/messages': {
+      id: '/admin/messages'
+      path: '/messages'
+      fullPath: '/admin/messages'
+      preLoaderRoute: typeof AdminMessagesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/analytics': {
       id: '/admin/analytics'
       path: '/analytics'
@@ -579,6 +617,8 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminAnalyticsRoute: typeof AdminAnalyticsRoute
+  AdminMessagesRoute: typeof AdminMessagesRoute
+  AdminNewsletterRoute: typeof AdminNewsletterRoute
   AdminWebsiteSettingsRoute: typeof AdminWebsiteSettingsRoute
   AdminIndexRoute: typeof AdminIndexRoute
   AdminOrdersIdRoute: typeof AdminOrdersIdRoute
@@ -594,6 +634,8 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAnalyticsRoute: AdminAnalyticsRoute,
+  AdminMessagesRoute: AdminMessagesRoute,
+  AdminNewsletterRoute: AdminNewsletterRoute,
   AdminWebsiteSettingsRoute: AdminWebsiteSettingsRoute,
   AdminIndexRoute: AdminIndexRoute,
   AdminOrdersIdRoute: AdminOrdersIdRoute,

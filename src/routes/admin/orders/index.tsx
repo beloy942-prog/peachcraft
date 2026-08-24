@@ -1,11 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { format } from "date-fns";
+import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import { getOrdersList, type OrderSummary } from "@/lib/api/supabase.functions";
+import { deleteOrder, getOrdersList, type OrderSummary } from "@/lib/api/supabase.functions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 
 const statuses = ["all", "pending", "confirmed", "shipped", "delivered", "cancelled"] as const;
 const statusColors: Record<string, string> = {
@@ -28,6 +41,21 @@ function AdminOrdersPage() {
   const [filter, setFilter] = useState<string>("all");
   const [newOrderMessage, setNewOrderMessage] = useState<string | null>(null);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const [orderToDelete, setOrderToDelete] = useState<OrderSummary | null>(null);
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteOrder({ data: { id } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+      toast.success(`Order ${orderToDelete?.order_number ?? ""} deleted.`);
+      setOrderToDelete(null);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to delete the order.");
+      // Keep the dialog open on failure so the admin can retry or cancel.
+    },
+  });
 
   useEffect(() => {
     if (data) {
@@ -126,13 +154,25 @@ function AdminOrdersPage() {
                   <span className="text-sm font-medium text-[var(--foreground)]">₱{order.total_amount.toLocaleString("en-PH")}</span>
                   <span className="text-xs text-[var(--foreground)]/60">{format(new Date(order.created_at), "MMM d, yyyy")}</span>
                 </div>
-                <Link
-                  to="/admin/orders/$id"
-                  params={{ id: order.id }}
-                  className="mt-3 inline-flex w-full justify-center rounded-full bg-[var(--background)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] shadow-soft hover:bg-[var(--foreground)]/10"
-                >
-                  View order
-                </Link>
+                <div className="mt-3 flex items-center gap-2">
+                  <Link
+                    to="/admin/orders/$id"
+                    params={{ id: order.id }}
+                    className="inline-flex flex-1 justify-center rounded-full bg-[var(--background)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] shadow-soft hover:bg-[var(--foreground)]/10"
+                  >
+                    View order
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setOrderToDelete(order)}
+                    disabled={deleteMutation.isPending}
+                    aria-label={`Delete order ${order.order_number ?? order.id}`}
+                    title="Delete order"
+                    className="inline-flex items-center justify-center rounded-full border border-destructive/30 bg-destructive/10 p-2 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
             {filteredOrders.length === 0 && (
@@ -150,7 +190,7 @@ function AdminOrdersPage() {
                   <th className="px-5 py-4">Total</th>
                   <th className="px-5 py-4">Status</th>
                   <th className="px-5 py-4">Date</th>
-                  <th className="px-5 py-4">View</th>
+                  <th className="px-5 py-4">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -164,13 +204,25 @@ function AdminOrdersPage() {
                     </td>
                     <td className="px-5 py-4 text-[var(--foreground)]/80">{format(new Date(order.created_at), "MMM d, yyyy")}</td>
                     <td className="px-5 py-4">
-                      <Link
-                        to="/admin/orders/$id"
-                        params={{ id: order.id }}
-                        className="inline-flex rounded-full bg-[var(--background)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] shadow-soft hover:bg-[var(--foreground)]/10"
-                      >
-                        View
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          to="/admin/orders/$id"
+                          params={{ id: order.id }}
+                          className="inline-flex rounded-full bg-[var(--background)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] shadow-soft hover:bg-[var(--foreground)]/10"
+                        >
+                          View
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setOrderToDelete(order)}
+                          disabled={deleteMutation.isPending}
+                          aria-label={`Delete order ${order.order_number ?? order.id}`}
+                          title="Delete order"
+                          className="inline-flex items-center justify-center rounded-full border border-destructive/30 bg-destructive/10 p-2 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -179,6 +231,34 @@ function AdminOrdersPage() {
           </div>
         </>
       )}
+
+      {/* Delete confirmation */}
+      <AlertDialog open={orderToDelete !== null} onOpenChange={(open) => { if (!open) setOrderToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Order <span className="font-semibold text-[var(--foreground)]">#{orderToDelete?.order_number ?? orderToDelete?.id.slice(0, 8)}</span> will be
+              permanently removed along with its line items and any linked GCash payment
+              records.{" "}
+              {orderToDelete?.status === "cancelled"
+                ? ""
+                : "Its reserved stock will be returned to inventory. "}
+              This action is permanent and cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={() => { if (orderToDelete) deleteMutation.mutate(orderToDelete.id); }}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete order"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
