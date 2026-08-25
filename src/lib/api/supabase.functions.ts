@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { getSupabaseServer } from "../supabase";
 import { verifyAdmin, validateImageBuffer } from "./admin-auth";
+import { emailService } from "../email.service";
 import { verifyTurnstile } from "./turnstile";
 
 export type ProductRow = {
@@ -20,6 +21,7 @@ export type ProductRow = {
   dimensions?: string | null;
   care_instructions?: string | null;
   return_policy?: string | null;
+  total_sold?: number | null;
 };
 
 export type ProductFormData = {
@@ -555,7 +557,7 @@ export const createOrder = createServerFn({ method: "POST" })
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert(orderPayload)
-      .select("id")
+      .select("id, total_amount, payment_method, status")
       .single();
 
     if (orderError || !order) {

@@ -308,9 +308,9 @@ export function SiteHeader() {
             /* ── NORMAL MODE ── */
             <>
               {/* Mobile Navbar Placement: [Hamburger] - [Centered Logo] - [Search, Cart] */}
-              <div className="flex items-center justify-between h-14 lg:hidden w-full relative">
+              <div className="flex items-center justify-between h-14 lg:hidden w-full px-1 sm:px-2">
                 {/* Left: Hamburger */}
-                <div className="flex justify-start z-10">
+                <div className="flex justify-start shrink-0">
                   <button
                     type="button"
                     aria-label={mobileOpen ? "Close menu" : "Open menu"}
@@ -322,15 +322,15 @@ export function SiteHeader() {
                   </button>
                 </div>
 
-                {/* Center: Logo (Absolutely Centered and Horizontal) */}
-                <div className="absolute inset-x-0 mx-auto flex justify-center items-center pointer-events-none">
-                  <Link to="/" className="flex items-center gap-1.5 pointer-events-auto group whitespace-nowrap transition-all duration-300" aria-label="Peach Craft home" style={{ transform: `scale(${compact ? 1 : 1.15})`, transformOrigin: "center center" }}>
+                {/* Center: Logo (Flex-1 to prevent overlap) */}
+                <div className="flex-1 flex justify-center items-center pointer-events-none min-w-0 mx-2">
+                  <Link to="/" className="flex items-center gap-1.5 pointer-events-auto group whitespace-nowrap transition-all duration-300 min-w-0" aria-label="Peach Craft home" style={{ transform: `scale(${compact ? 1 : 1.15})`, transformOrigin: "center center" }}>
                     <img
                       src={logoUrl}
                       alt="Peach Craft logo"
-                      className="w-8 h-8 object-contain transition-transform group-hover:rotate-12 duration-300"
+                      className="w-8 h-8 object-contain transition-transform group-hover:rotate-12 duration-300 shrink-0"
                     />
-                    <span className="font-display text-xl whitespace-nowrap">
+                    <span className="font-display text-xl truncate">
                       <span className="text-gray-900">Peach</span>{" "}
                       <span className="text-blush font-bold">Craft</span>
                     </span>
@@ -338,7 +338,7 @@ export function SiteHeader() {
                 </div>
 
                 {/* Right: Search, Orders, Cart */}
-                <div className="flex justify-end items-center gap-4 z-10">
+                <div className="flex justify-end items-center gap-1 sm:gap-3 shrink-0">
                   {/* Search button */}
                   <button
                     type="button"
@@ -346,17 +346,10 @@ export function SiteHeader() {
                     onClick={openSearch}
                     className="text-gray-600 hover:text-blush transition-colors p-1"
                   >
-                    <Search className="w-6 h-6" />
+                    <Search className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
 
-                  {/* Orders */}
-                  <Link
-                    to="/orders"
-                    aria-label="My Orders"
-                    className="text-gray-600 hover:text-blush transition-colors p-1"
-                  >
-                    <Package className="w-6 h-6" />
-                  </Link>
+
 
                   {/* Cart */}
                   <Link
@@ -366,11 +359,11 @@ export function SiteHeader() {
                   >
                     <ShoppingBag
                       className={cn(
-                        "w-6 h-6 transition-transform text-gray-600",
+                        "w-5 h-5 sm:w-6 sm:h-6 transition-transform text-gray-600",
                         cartBouncing && "animate-cart-bounce",
                       )}
                     />
-                    <span className="absolute -top-1.5 -right-1.5 grid h-4 min-w-[1rem] place-items-center rounded-full bg-blush text-[0.55rem] font-bold text-white px-0.5 shadow-soft">
+                    <span className="absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 grid h-3.5 min-w-[0.875rem] sm:h-4 sm:min-w-[1rem] place-items-center rounded-full bg-blush text-[0.5rem] sm:text-[0.55rem] font-bold text-white px-0.5 shadow-soft">
                       {itemCount}
                     </span>
                   </Link>
@@ -567,6 +560,14 @@ export function SiteHeader() {
                   </Link>
                 </li>
               ))}
+              <li>
+                <Link
+                  to="/orders"
+                  className="block px-4 py-3 rounded-2xl text-base font-semibold hover:bg-accent/50 text-foreground transition-all"
+                >
+                  My Orders
+                </Link>
+              </li>
               {/* Currency — mobile */}
               <li className="px-4 py-3">
                 <Popover>

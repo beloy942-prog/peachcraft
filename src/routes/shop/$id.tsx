@@ -227,6 +227,13 @@ function ProductDetailPage() {
                   </span>
                 </div>
               )}
+              {(product as any)?.total_sold > 0 && !isSoldOut && (
+                <div className="absolute left-4 bottom-4 sm:left-6 sm:bottom-6">
+                  <span className="px-4 py-2 rounded-xl bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wider shadow-card select-none">
+                    Sold: {(product as any).total_sold}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Image counter slider — shown when multiple images */}

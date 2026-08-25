@@ -351,6 +351,9 @@ function ProductsTable({ data, isLoading, error, activeId, onToggle, onDelete }:
                     Active
                   </TableHead>
                   <TableHead className="text-xs uppercase tracking-wider text-gray-500 font-semibold h-10 px-4 text-right">
+                    Total Sold
+                  </TableHead>
+                  <TableHead className="text-xs uppercase tracking-wider text-gray-500 font-semibold h-10 px-4 text-right">
                     Actions
                   </TableHead>
                 </TableRow>
