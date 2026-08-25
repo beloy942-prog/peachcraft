@@ -112,74 +112,84 @@ function ShopPage() {
 
         {/* ── Filter / Sort bar ── */}
         {!isLoading && (
-          <div className="shop-controls-bar">
-            {/* Left: Filter trigger */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className="shop-controls-trigger shop-controls-trigger--text"
+          <div className="mt-3 mb-1">
+            {/* Row 1 (mobile): Filter left, product count right */}
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="shop-controls-trigger shop-controls-trigger--text"
+                  >
+                    <span className="text-foreground/60">Filter:</span>
+                    <span className="text-primary font-medium">Availability</span>
+                    {availabilityFilter !== "all" && (
+                      <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary text-white text-[9px] font-bold">1</span>
+                    )}
+                    <ChevronDown className="w-3.5 h-3.5 text-foreground/40 shrink-0" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  sideOffset={6}
+                  className="w-64 p-0"
                 >
-                  <span className="text-foreground/60">Filter:</span>
-                  <span className="text-primary font-medium">Availability</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-foreground/40 shrink-0" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                sideOffset={6}
-                className="w-64 p-0"
-              >
-                <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-                  <span className="text-xs text-foreground/50">
-                    {availabilityFilter !== "all" ? "1 selected" : "0 selected"}
-                  </span>
-                  {availabilityFilter !== "all" && (
-                    <button
-                      type="button"
-                      onClick={() => setAvailabilityFilter("all")}
-                      className="text-xs underline text-foreground/60 hover:text-foreground"
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
-                <div className="border-t" />
-                <div className="p-2 space-y-1">
-                  {AVAILABILITY_OPTIONS.filter((o) => o.value !== "all").map((opt) => (
-                    <label
-                      key={opt.value}
-                      className="flex items-center gap-2.5 px-2 py-1.5 rounded cursor-pointer hover:bg-accent text-sm"
-                    >
-                      <Checkbox
-                        checked={availabilityFilter === opt.value}
-                        onCheckedChange={() => {
-                          if (availabilityFilter === opt.value) {
-                            setAvailabilityFilter("all");
-                          } else {
-                            setAvailabilityFilter(opt.value);
-                          }
-                        }}
-                      />
-                      <span className="flex-1">{opt.label}</span>
-                      <span className="text-xs text-foreground/50 tabular-nums">
-                        {opt.value === "in-stock" ? inStockCount : outOfStockCount}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
+                  <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                    <span className="text-xs text-foreground/50">
+                      {availabilityFilter !== "all" ? "1 selected" : "0 selected"}
+                    </span>
+                    {availabilityFilter !== "all" && (
+                      <button
+                        type="button"
+                        onClick={() => setAvailabilityFilter("all")}
+                        className="text-xs underline text-foreground/60 hover:text-foreground"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                  <div className="border-t" />
+                  <div className="p-2 space-y-1">
+                    {AVAILABILITY_OPTIONS.filter((o) => o.value !== "all").map((opt) => (
+                      <label
+                        key={opt.value}
+                        className="flex items-center gap-2.5 px-2 py-1.5 rounded cursor-pointer hover:bg-accent text-sm"
+                      >
+                        <Checkbox
+                          checked={availabilityFilter === opt.value}
+                          onCheckedChange={() => {
+                            if (availabilityFilter === opt.value) {
+                              setAvailabilityFilter("all");
+                            } else {
+                              setAvailabilityFilter(opt.value);
+                            }
+                          }}
+                        />
+                        <span className="flex-1">{opt.label}</span>
+                        <span className="text-xs text-foreground/50 tabular-nums">
+                          {opt.value === "in-stock" ? inStockCount : outOfStockCount}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
 
-            {/* Right: Sort trigger + product count */}
-            <div className="flex items-center gap-3 ml-auto">
+              {/* Product count — always visible on the right */}
+              <span className="text-xs text-neutral-400 tabular-nums">
+                {productCount} {productCount === 1 ? "product" : "products"}
+              </span>
+            </div>
+
+            {/* Row 2 (mobile): Sort — full width feel, right-aligned */}
+            <div className="flex items-center justify-end pt-2.5 pb-1">
               <Popover>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
                     className="shop-controls-trigger shop-controls-trigger--select"
                   >
-                    <span className="text-foreground/60">Sort by:</span>
+                    <span className="text-foreground/60">Sort:</span>
                     <span className="font-medium text-foreground">
                       {selectedSortLabel}
                     </span>
@@ -213,26 +223,28 @@ function ShopPage() {
                   </div>
                 </PopoverContent>
               </Popover>
-
-              <span className="text-sm text-foreground/50 whitespace-nowrap">
-                {productCount} {productCount === 1 ? "product" : "products"}
-              </span>
             </div>
           </div>
         )}
 
         {/* ── Product grid ── */}
-        <ul id="product-grid" className="grid grid-cols-2 min-[990px]:grid-cols-4 gap-[10px] min-[750px]:gap-[20px] mt-4 list-none p-0">
+        <ul id="product-grid" className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mt-2 list-none p-0">
           {isLoading ? (
             Array.from({ length: 8 }).map((_, index) => (
-              <li key={index} className="h-80 rounded-[6px] bg-[var(--card)] shadow-soft animate-pulse" />
+              <li key={index} className="flex flex-col bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden animate-pulse">
+                <div className="aspect-square bg-neutral-100" />
+                <div className="p-3 sm:p-4 flex flex-col gap-2">
+                  <div className="h-3 w-3/4 rounded-full bg-neutral-100" />
+                  <div className="h-3 w-1/3 rounded-full bg-neutral-100" />
+                </div>
+              </li>
             ))
           ) : error ? (
-            <li className="col-span-full"><div className="rounded-[2rem] bg-[var(--card)] p-6 text-sm text-[#f87171] shadow-soft">
+            <li className="col-span-full"><div className="rounded-2xl bg-white border border-neutral-100 p-6 text-sm text-red-400 shadow-sm">
               {error instanceof Error ? error.message : "Unable to load products."}
             </div></li>
           ) : filteredProducts.length === 0 ? (
-            <li className="col-span-full"><p className="text-center text-foreground/50 py-16">
+            <li className="col-span-full"><p className="text-center text-neutral-400 py-16 text-sm">
               No products match the selected filters.
             </p></li>
           ) : filteredProducts.map((p, i) => (
