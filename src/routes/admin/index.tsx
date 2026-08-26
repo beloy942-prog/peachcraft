@@ -260,7 +260,7 @@ function AdminDashboard() {
       {/* Bottom Row */}
       <div className="grid gap-4 sm:gap-6 xl:grid-cols-5">
         {/* Recent Activity */}
-        <div className="rounded-xl border bg-white p-4 sm:p-5 shadow-sm xl:col-span-2">
+        <div className="rounded-xl border bg-white p-4 sm:p-5 shadow-sm xl:col-span-2 overflow-hidden">
           <h2 className="text-sm sm:text-base font-semibold text-gray-900">Recent Activity</h2>
           <p className="text-xs text-gray-500 mb-4">Latest store events</p>
           {data!.recentActivity.length === 0 ? (
@@ -308,7 +308,7 @@ function AdminDashboard() {
             <p className="text-sm text-gray-400">No product sales data yet</p>
           ) : (
             <div className="overflow-x-auto">
-            <Table>
+            <Table className="min-w-[500px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[200px]">Product</TableHead>
