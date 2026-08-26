@@ -2643,3 +2643,90 @@ export const recordLoginFailure = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
+
+// ---------------------------------------------------------------------------
+// Custom Categories
+// ---------------------------------------------------------------------------
+
+export const getCustomCategories = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const supabase = getSupabaseServer();
+    const { data, error } = await supabase
+      .from("custom_categories")
+      .select("name")
+      .order("name");
+
+    if (error) {
+      console.error("[getCustomCategories] query failed:", error.message);
+      throw new Error("Unable to load custom categories.");
+    }
+
+    return (data ?? []).map((row) => row.name);
+  },
+);
+
+export const createCustomCategory = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      name: z.string().min(1).max(100),
+      accessToken: z.string().optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    await verifyAdmin(undefined, data.accessToken);
+    const supabase = getSupabaseServer();
+
+    const { error } = await supabase
+      .from("custom_categories")
+      .insert({ name: data.name.trim() })
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === "23505") return { success: true, alreadyExists: true };
+      console.error("[createCustomCategory] insert failed:", error.message);
+      throw new Error("Unable to save custom category.");
+    }
+
+    return { success: true };
+  });
+
+export const deleteCustomCategory = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      name: z.string().min(1),
+      accessToken: z.string().optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    await verifyAdmin(undefined, data.accessToken);
+    const supabase = getSupabaseServer();
+
+    const { count, error: countError } = await supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .or(`category.eq.${data.name},category.like.%${data.name}%`);
+
+    if (countError) {
+      console.error("[deleteCustomCategory] count query failed:", countError.message);
+      throw new Error("Unable to check category usage.");
+    }
+
+    if (count && count > 0) {
+      throw new Error(
+        `Cannot delete "${data.name}" — ${count} product${count === 1 ? "" : "s"} still use this category. Remove it from those products first.`,
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("custom_categories")
+      .delete()
+      .eq("name", data.name);
+
+    if (deleteError) {
+      console.error("[deleteCustomCategory] delete failed:", deleteError.message);
+      throw new Error("Unable to delete category.");
+    }
+
+    return { success: true };
+  });

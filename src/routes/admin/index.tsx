@@ -260,7 +260,7 @@ function AdminDashboard() {
       {/* Bottom Row */}
       <div className="grid gap-4 sm:gap-6 xl:grid-cols-5">
         {/* Recent Activity */}
-        <div className="rounded-xl border bg-white p-4 sm:p-5 shadow-sm xl:col-span-2 overflow-hidden">
+        <div className="min-w-0 rounded-xl border bg-white p-4 sm:p-5 shadow-sm xl:col-span-2">
           <h2 className="text-sm sm:text-base font-semibold text-gray-900">Recent Activity</h2>
           <p className="text-xs text-gray-500 mb-4">Latest store events</p>
           {data!.recentActivity.length === 0 ? (
@@ -301,7 +301,7 @@ function AdminDashboard() {
         </div>
 
         {/* Top Products Table */}
-        <div className="rounded-xl border bg-white p-4 sm:p-5 shadow-sm xl:col-span-3">
+        <div className="min-w-0 rounded-xl border bg-white p-4 sm:p-5 shadow-sm xl:col-span-3">
           <h2 className="text-sm sm:text-base font-semibold text-gray-900">Top Products</h2>
           <p className="text-xs text-gray-500 mb-4">Best selling products by revenue</p>
           {data!.topProducts.length === 0 ? (

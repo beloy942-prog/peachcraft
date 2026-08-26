@@ -47,8 +47,8 @@ function AdminReturnsPage() {
           <p className="mt-1 text-sm text-[var(--foreground)]/70">Cancelled orders will appear here.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-soft">
-          <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-soft">
+          <table className="min-w-[600px] w-full text-left text-sm">
             <thead className="bg-[var(--background)] text-[var(--foreground)]/75">
               <tr>
                 <th className="px-5 py-4">Order</th>

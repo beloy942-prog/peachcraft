@@ -1,16 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import imageCompression from "browser-image-compression";
 import { cn } from "@/lib/utils";
 import { getSupabaseClient } from "@/lib/supabase";
-import { uploadProductImage } from "@/lib/api/supabase.functions";
+import { uploadProductImage, getCustomCategories, createCustomCategory, deleteCustomCategory } from "@/lib/api/supabase.functions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Alert } from "@/components/ui/alert";
+import { Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Product } from "@/lib/supabase";
-import { getAvailableProductCategories, normalizeProductCategories } from "@/lib/productCategories";
+import { getAvailableProductCategories, normalizeProductCategories, PRODUCT_CATEGORY_OPTIONS, LEGACY_PRODUCT_CATEGORY_OPTIONS } from "@/lib/productCategories";
 
 export type ProductFormData = {
   name: string;
@@ -36,6 +48,7 @@ interface ProductFormProps {
 
 export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const tagOptions = ["New", "Best seller", "Limited", "Featured", "Gift"];
 
   const [name, setName] = useState(initialData?.name ?? "");
@@ -66,6 +79,16 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragActive, setIsDragActive] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
+
+  const { data: customCategories = [] } = useQuery<string[]>({
+    queryKey: ["custom-categories"],
+    queryFn: () => getCustomCategories(),
+  });
+
+  const isCustomCategory = (name: string) =>
+    !PRODUCT_CATEGORY_OPTIONS.includes(name as any) &&
+    !LEGACY_PRODUCT_CATEGORY_OPTIONS.includes(name as any);
 
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -120,10 +143,19 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
       reader.readAsDataURL(file);
     });
 
-  const addCategory = (value: string) => {
+  const addCategory = async (value: string) => {
     const trimmed = value.trim();
     if (!trimmed || selectedCategories.includes(trimmed)) return;
     setSelectedCategories((current) => [...current, trimmed]);
+    if (!PRODUCT_CATEGORY_OPTIONS.includes(trimmed as any) && !LEGACY_PRODUCT_CATEGORY_OPTIONS.includes(trimmed as any)) {
+      try {
+        const accessToken = await getAccessToken();
+        await createCustomCategory({ data: { name: trimmed, accessToken } });
+        await queryClient.invalidateQueries({ queryKey: ["custom-categories"] });
+      } catch {
+        // Non-blocking — the category is still added to this product even if persisting fails.
+      }
+    }
   };
 
   const addTag = (value: string) => {
@@ -156,6 +188,20 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
 
   const removeCategory = (value: string) => {
     setSelectedCategories((current) => current.filter((item) => item !== value));
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    try {
+      const accessToken = await getAccessToken();
+      await deleteCustomCategory({ data: { name: categoryToDelete, accessToken } });
+      setSelectedCategories((current) => current.filter((c) => c !== categoryToDelete));
+      await queryClient.invalidateQueries({ queryKey: ["custom-categories"] });
+      setCategoryToDelete(null);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to delete category.");
+      setCategoryToDelete(null);
+    }
   };
 
   const removeTag = (value: string) => {
@@ -508,6 +554,17 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
               {getAvailableProductCategories(selectedCategories).map((o) => (
                 <option key={o} value={o}>{o}</option>
               ))}
+              {customCategories
+                .filter(
+                  (c) =>
+                    !PRODUCT_CATEGORY_OPTIONS.includes(c as any) &&
+                    !LEGACY_PRODUCT_CATEGORY_OPTIONS.includes(c as any) &&
+                    !selectedCategories.includes(c) &&
+                    !getAvailableProductCategories(selectedCategories).includes(c),
+                )
+                .map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
               <option value="new">Add custom category</option>
             </select>
             {showCategoryInput && (
@@ -540,7 +597,29 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
                   className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
                 >
                   {value}
-                  <span className="text-gray-400">×</span>
+                  {isCustomCategory(value) ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      title={`Delete "${value}" from system`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCategoryToDelete(value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setCategoryToDelete(value);
+                        }
+                      }}
+                      className="ml-0.5 text-red-400 hover:text-red-600 cursor-pointer"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">×</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -747,6 +826,26 @@ export function ProductForm({ initialData, onSubmit, isLoading }: ProductFormPro
           {isLoading ? "Saving..." : "Save product"}
         </Button>
       </div>
+
+      <AlertDialog open={categoryToDelete !== null} onOpenChange={(open) => { if (!open) setCategoryToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete category?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove <strong>{categoryToDelete}</strong> from the category list. You can re-add it later as a custom category if needed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteCategory}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

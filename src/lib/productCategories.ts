@@ -1,4 +1,4 @@
-export const PRODUCT_CATEGORY_OPTIONS = ["Necklaces", "Airdry Clay Crafts", "Fake Cakes"] as const;
+export const PRODUCT_CATEGORY_OPTIONS = ["Airdry Clay Crafts", "Fake Cakes"] as const;
 
 export const LEGACY_PRODUCT_CATEGORY_OPTIONS = ["Rings", "Bracelets", "Earrings", "Accessories"] as const;
 
