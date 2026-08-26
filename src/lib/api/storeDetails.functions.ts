@@ -10,9 +10,8 @@ export type StoreDetails = {
   contact_email: string | null;
   contact_number: string;
   address: string | null;
-  facebook_url: string | null;
+  tiktok_url: string | null;
   instagram_url: string | null;
-  twitter_url: string | null;
   footer_text: string | null;
   hero_banner: string | null;
   gcash_number: string | null;
@@ -92,9 +91,8 @@ export const updateStoreDetails = createServerFn({ method: "POST" })
       contact_email: z.string().nullable(),
       contact_number: z.string().min(1),
       address: z.string().nullable(),
-      facebook_url: z.string().nullable(),
+      tiktok_url: z.string().nullable(),
       instagram_url: z.string().nullable(),
-      twitter_url: z.string().nullable(),
       footer_text: z.string().nullable(),
       hero_banner: z.string().nullable(),
       gcash_number: z.string().nullable(),
@@ -115,9 +113,8 @@ export const updateStoreDetails = createServerFn({ method: "POST" })
       contact_email: data.contact_email,
       contact_number: data.contact_number,
       address: data.address,
-      facebook_url: data.facebook_url,
+      tiktok_url: data.tiktok_url,
       instagram_url: data.instagram_url,
-      twitter_url: data.twitter_url,
       footer_text: data.footer_text,
       hero_banner: data.hero_banner,
       gcash_number: data.gcash_number,

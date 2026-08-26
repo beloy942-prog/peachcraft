@@ -7,6 +7,10 @@ import { Package, XCircle, Loader2, ChevronRight } from "lucide-react";
 
 export const Route = createFileRoute("/orders")({
   component: OrdersPage,
+  validateSearch: (search: Record<string, unknown>) => {
+    if (typeof search.email === "string") return { email: search.email };
+    return {};
+  },
 });
 
 type OrderItem = {
@@ -83,6 +87,7 @@ function estimateArrival(createdAt: string, status: string): string | null {
 function OrdersPage() {
   const navigate = useNavigate();
   const { formatPrice } = useCurrency();
+  const search = Route.useSearch();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -121,8 +126,19 @@ function OrdersPage() {
     return () => { mounted = false; };
   }, [authLoading, authSession, navigate]);
 
-  const handleGuestLookup = async () => {
-    const trimmed = guestEmail.trim();
+  // Auto-search for guest orders when email is provided via URL search params.
+  useEffect(() => {
+    if (authLoading || authSession || guestSearched || loading) return;
+    const emailParam = "email" in search ? search.email : undefined;
+    if (!emailParam) return;
+    setGuestEmail(emailParam);
+    handleGuestLookup(emailParam);
+    // Run once on mount when email param is present.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, authSession]);
+
+  const handleGuestLookup = async (emailOverride?: string) => {
+    const trimmed = (typeof emailOverride === "string" ? emailOverride : guestEmail).trim();
     if (!trimmed) {
       setGuestLookupError("Please enter the email you used at checkout.");
       return;
@@ -212,7 +228,7 @@ function OrdersPage() {
             </div>
             <button
               type="button"
-              onClick={handleGuestLookup}
+              onClick={() => handleGuestLookup()}
               className="inline-flex rounded-full bg-gray-900 px-6 py-2.5 text-sm font-medium text-white shadow-[0_2px_12px_-3px_rgba(0,0,0,0.25)] hover:bg-gray-800 transition-colors"
             >
               Find Orders

@@ -765,6 +765,12 @@ export const submitGCashProof = createServerFn({ method: "POST" })
       if (order.user_id !== userId) {
         throw new Error("This order does not belong to you.");
       }
+      // Defense-in-depth: also verify the proof email matches shipping address
+      // for authenticated orders (guest path already checks this above).
+      const shippingEmail = (order.shipping_address as Record<string, string>)?.email;
+      if (shippingEmail && shippingEmail.toLowerCase() !== data.customer_email.toLowerCase()) {
+        throw new Error("Email does not match the order's shipping address.");
+      }
     }
 
     if (order.payment_method !== "gcash") {
@@ -899,6 +905,7 @@ export const getAdminPayments = createServerFn({ method: "GET" })
         verified_at,
         status,
         orders!inner (
+          order_number,
           total_amount,
           status,
           payment_status,

@@ -1,8 +1,10 @@
 import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Instagram, Music2, Mail, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { subscribeNewsletter } from "@/lib/api/newsletter.functions";
+import { getStoreDetails } from "@/lib/api/storeDetails.functions";
 
 const regionOptions = [
   { value: "ph", label: "Philippines (PHP ₱)", code: "PHP", symbol: "₱", locale: "en-PH" },
@@ -16,6 +18,11 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
   const [done, setDone] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState(regionOptions[0]);
+
+  const { data: settings } = useQuery({
+    queryKey: ["store-details"],
+    queryFn: getStoreDetails,
+  });
 
   const handleRegionChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const nextRegion = regionOptions.find((option) => option.value === event.target.value) ?? regionOptions[0];
@@ -34,28 +41,42 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
             Handmade fake cakes, storage boxes &amp; clay crafts — made with love, one piece at a time. Crafted to look good and actually be useful. 🍑
           </p>
           <div className="flex gap-3">
-            {[
-              {
-                Icon: Instagram,
-                label: "Instagram",
-                href: "https://www.instagram.com/_peachcraft?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==",
-              },
-              {
-                Icon: Music2,
-                label: "TikTok",
-                href: "https://www.tiktok.com/@thepeachywitch?is_from_webapp=1&sender_device=pc",
-              },
-              { Icon: Mail, label: "Email us", href: "mailto:hello@peachcraft.shop" },
-            ].map(({ Icon, label, href }) => {
-              const external = href?.startsWith("http");
+            {(
+              [
+                settings?.instagram_url
+                  ? { Icon: Instagram, label: "Instagram", href: settings.instagram_url }
+                  : null,
+                settings?.tiktok_url
+                  ? { Icon: Music2, label: "TikTok", href: settings.tiktok_url }
+                  : null,
+                { Icon: Mail, label: "Email us", href: "/contact" },
+              ] as const
+            )
+              .filter((item): item is (typeof item) & { Icon: typeof Instagram; label: string; href: string } => item !== null)
+              .map(({ Icon, label, href }) => {
+              const external = href?.startsWith("http") || href?.startsWith("mailto:");
+              const internal = !external;
+              const className = "grid place-items-center w-10 h-10 rounded-full bg-white/10 hover:bg-blush hover:text-blush-foreground transition-all duration-300 btn-bounce-hover";
+              if (internal) {
+                return (
+                  <Link
+                    key={label}
+                    to={href}
+                    aria-label={label}
+                    className={className}
+                  >
+                    <Icon className="w-4 h-4" />
+                  </Link>
+                );
+              }
               return (
                 <a
                   key={label}
                   href={href}
-                  target={external ? "_blank" : undefined}
-                  rel={external ? "noopener noreferrer" : undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   aria-label={label}
-                  className="grid place-items-center w-10 h-10 rounded-full bg-white/10 hover:bg-blush hover:text-blush-foreground transition-all duration-300 btn-bounce-hover"
+                  className={className}
                 >
                   <Icon className="w-4 h-4" />
                 </a>

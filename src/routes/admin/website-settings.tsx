@@ -16,9 +16,8 @@ function WebsiteSettings() {
     contact_email: "",
     contact_number: "",
     address: "",
-    facebook_url: "",
+    tiktok_url: "",
     instagram_url: "",
-    twitter_url: "",
     footer_text: "",
     hero_banner: null,
     gcash_number: "",
@@ -48,9 +47,8 @@ function WebsiteSettings() {
           contact_email: data.contact_email ?? "",
           contact_number: data.contact_number ?? "",
           address: data.address ?? "",
-          facebook_url: data.facebook_url ?? "",
+          tiktok_url: data.tiktok_url ?? "",
           instagram_url: data.instagram_url ?? "",
-          twitter_url: data.twitter_url ?? "",
           footer_text: data.footer_text ?? "",
           hero_banner: data.hero_banner ?? null,
           gcash_number: data.gcash_number ?? "",
@@ -143,9 +141,8 @@ function WebsiteSettings() {
         contact_email: form.contact_email ?? null,
         contact_number: form.contact_number,
         address: form.address ?? null,
-        facebook_url: form.facebook_url ?? null,
+        tiktok_url: form.tiktok_url ?? null,
         instagram_url: form.instagram_url ?? null,
-        twitter_url: form.twitter_url ?? null,
         footer_text: form.footer_text ?? null,
         hero_banner: heroBannerUrl ?? null,
         gcash_number: form.gcash_number ?? null,
@@ -166,9 +163,8 @@ function WebsiteSettings() {
         contact_email: refreshed?.contact_email ?? "",
         contact_number: refreshed?.contact_number ?? "",
         address: refreshed?.address ?? "",
-        facebook_url: refreshed?.facebook_url ?? "",
+        tiktok_url: refreshed?.tiktok_url ?? "",
         instagram_url: refreshed?.instagram_url ?? "",
-        twitter_url: refreshed?.twitter_url ?? "",
         footer_text: refreshed?.footer_text ?? "",
         hero_banner: refreshed?.hero_banner ?? null,
         gcash_number: refreshed?.gcash_number ?? "",
@@ -198,9 +194,8 @@ function WebsiteSettings() {
       contact_email: initial.contact_email ?? "",
       contact_number: initial.contact_number ?? "",
       address: initial.address ?? "",
-      facebook_url: initial.facebook_url ?? "",
+      tiktok_url: initial.tiktok_url ?? "",
       instagram_url: initial.instagram_url ?? "",
-      twitter_url: initial.twitter_url ?? "",
       footer_text: initial.footer_text ?? "",
       hero_banner: initial.hero_banner ?? null,
       gcash_number: initial.gcash_number ?? "",
@@ -290,10 +285,10 @@ function WebsiteSettings() {
 
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block">
-              <div className="text-sm font-medium mb-2">Facebook URL</div>
+              <div className="text-sm font-medium mb-2">TikTok URL</div>
               <input
-                value={form.facebook_url}
-                onChange={(e) => setForm({ ...form, facebook_url: e.target.value })}
+                value={form.tiktok_url}
+                onChange={(e) => setForm({ ...form, tiktok_url: e.target.value })}
                 className="w-full rounded-md border px-3 py-2"
               />
             </label>
@@ -306,15 +301,6 @@ function WebsiteSettings() {
               />
             </label>
           </div>
-
-          <label className="block">
-            <div className="text-sm font-medium mb-2">Twitter / X URL</div>
-            <input
-              value={form.twitter_url}
-              onChange={(e) => setForm({ ...form, twitter_url: e.target.value })}
-              className="w-full rounded-md border px-3 py-2"
-            />
-          </label>
 
           <label className="block">
             <div className="text-sm font-medium mb-2">Footer Copyright Text</div>
@@ -334,7 +320,10 @@ function WebsiteSettings() {
                 {logoPreview ? <img src={logoPreview} alt="logo preview" className="max-w-full max-h-full object-contain" /> : <span className="text-sm text-muted">No logo</span>}
               </div>
               <div>
-                <input type="file" accept="image/*" onChange={(e) => handleFileSelect(e, setLogoFile, setLogoPreview)} />
+                <label className="inline-block cursor-pointer rounded-full bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground shadow-soft underline decoration-transparent transition-colors duration-200 hover:bg-muted/90 hover:decoration-foreground/60">
+                  Choose file
+                  <input type="file" accept="image/*" onChange={(e) => handleFileSelect(e, setLogoFile, setLogoPreview)} className="sr-only" />
+                </label>
               </div>
             </div>
           </div>
@@ -346,7 +335,10 @@ function WebsiteSettings() {
                 {bannerPreview ? <img src={bannerPreview} alt="banner preview" className="w-full h-full object-cover rounded-md" /> : <span className="text-sm text-muted">No banner</span>}
               </div>
               <div>
-                <input type="file" accept="image/*" onChange={(e) => handleFileSelect(e, setBannerFile, setBannerPreview)} />
+                <label className="inline-block cursor-pointer rounded-full bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground shadow-soft underline decoration-transparent transition-colors duration-200 hover:bg-muted/90 hover:decoration-foreground/60">
+                  Choose file
+                  <input type="file" accept="image/*" onChange={(e) => handleFileSelect(e, setBannerFile, setBannerPreview)} className="sr-only" />
+                </label>
               </div>
             </div>
           </div>
@@ -358,7 +350,10 @@ function WebsiteSettings() {
                 {qrPreview ? <img src={qrPreview} alt="gcash qr preview" className="max-w-full max-h-full object-contain" /> : <span className="text-sm text-muted">No QR</span>}
               </div>
               <div>
-                <input type="file" accept="image/*" onChange={(e) => handleFileSelect(e, setQrFile, setQrPreview)} />
+                <label className="inline-block cursor-pointer rounded-full bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground shadow-soft underline decoration-transparent transition-colors duration-200 hover:bg-muted/90 hover:decoration-foreground/60">
+                  Choose file
+                  <input type="file" accept="image/*" onChange={(e) => handleFileSelect(e, setQrFile, setQrPreview)} className="sr-only" />
+                </label>
               </div>
             </div>
           </div>
@@ -372,10 +367,10 @@ function WebsiteSettings() {
           </div>
 
           <div className="flex items-center gap-3 mt-4">
-            <button onClick={handleSave} disabled={loading} className="px-4 py-2 rounded-full bg-blush text-blush-foreground font-semibold">
+            <button onClick={handleSave} disabled={loading} className="px-4 py-2 rounded-full bg-blush text-blush-foreground font-semibold transition hover:bg-blush/90">
               {loading ? "Saving..." : "Save"}
             </button>
-            <button onClick={handleReset} disabled={loading} className="px-4 py-2 rounded-full border">
+            <button onClick={handleReset} disabled={loading} className="px-4 py-2 rounded-full bg-muted text-muted-foreground font-semibold transition hover:bg-muted/90">
               Reset
             </button>
           </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { createOrder, getCustomerOrderById, getGuestOrder, getUserActiveOrderStatus, uploadPaymentProof, submitGCashProof, checkDuplicateReference, validateCartItems } from "@/lib/api/supabase.functions";
@@ -22,13 +22,16 @@ const DEFAULT_GCASH_CONFIG: GcashConfig = {
   qrCodeSrc: "/images/gcash-qr-placeholder.png",
 };
 
-const shippingSchema = z.object({
+const step1Schema = z.object({
   name: z.string().min(1, "Please enter your full name."),
-  email: z.string().email("Please enter a valid email address."),
+  email: z.string().min(1, "Please enter your email address.").email("Please enter a valid email address."),
   street: z.string().min(1, "Please enter a street address."),
   city: z.string().min(1, "Please enter a city."),
   province: z.string().min(1, "Please enter a province."),
   zip: z.string().min(1, "Please enter a postal code."),
+});
+
+const shippingSchema = step1Schema.extend({
   payment_method: z.enum(["cash_on_delivery", "gcash"]),
 });
 
@@ -151,6 +154,8 @@ function CheckoutPage() {
   const shippingFee = 150;
   const taxAmount = 0;
   const totalAmount = subtotal + shippingFee + taxAmount;
+  const gcashEmailMismatch = gcashEmail.trim() !== "" && email.trim() !== "" &&
+    gcashEmail.trim().toLowerCase() !== email.trim().toLowerCase();
   const [clientIp, setClientIp] = useState<string | null>(null);
   const [gcashConfig, setGcashConfig] = useState<GcashConfig>(DEFAULT_GCASH_CONFIG);
 
@@ -475,9 +480,8 @@ function CheckoutPage() {
     const parsed = await validateCheckout();
     if (!parsed) return;
 
-    const createdOrderId = await placeOrder(parsed);
-    if (!createdOrderId) return;
-
+    // Upload screenshot BEFORE creating the order so a failed upload
+    // never leaves an orphaned order row in the database.
     const reader = new FileReader();
     const base64 = await new Promise<string>((resolve, reject) => {
       reader.onload = () => resolve(reader.result as string);
@@ -496,6 +500,9 @@ function CheckoutPage() {
       setFormErrors({ screenshot: err instanceof Error ? err.message : "Failed to upload screenshot." });
       return;
     }
+
+    const createdOrderId = await placeOrder(parsed);
+    if (!createdOrderId) return;
 
     try {
       await submitProofMutation.mutateAsync({
@@ -683,7 +690,7 @@ function CheckoutPage() {
   return (
     <section className="bg-cream py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid gap-8 lg:grid-cols-[1.4fr_0.9fr]">
+        <div className={`grid gap-8 ${step === 4 ? "lg:grid-cols-1" : "lg:grid-cols-[1.4fr_0.9fr]"}`}>
           <div className="space-y-6 rounded-3xl bg-card p-8 shadow-soft">
             {/* Step indicator */}
             <div className="flex items-center gap-2 text-xs font-medium text-foreground/50 mb-2">
@@ -764,7 +771,19 @@ function CheckoutPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setStep(2)}
+                  onClick={() => {
+                    setFormErrors({});
+                    const result = step1Schema.safeParse({ name, email, street, city, province, zip });
+                    if (!result.success) {
+                      const newErrors: Record<string, string> = {};
+                      for (const issue of result.error.issues) {
+                        newErrors[issue.path[0] as string] = issue.message;
+                      }
+                      setFormErrors(newErrors);
+                      return;
+                    }
+                    setStep(2);
+                  }}
                   className="inline-flex w-full items-center justify-center rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-soft btn-bounce-hover hover:bg-primary/90"
                 >
                   Continue to Payment
@@ -960,6 +979,7 @@ function CheckoutPage() {
                       className="w-full rounded-[var(--radius)] border border-border bg-white px-4 py-3 outline-none"
                     />
                     {formErrors.gcashEmail ? <p className="text-xs text-red-400">{formErrors.gcashEmail}</p> : null}
+                    {gcashEmailMismatch && !formErrors.gcashEmail ? <p className="text-xs text-red-400">This doesn&apos;t match the email on your shipping details.</p> : null}
                   </label>
 
                   <label className="space-y-2 text-sm text-foreground">
@@ -1009,7 +1029,7 @@ function CheckoutPage() {
                   <button
                     type="button"
                     onClick={handleSubmitProof}
-                    disabled={submitProofMutation.isPending || uploadMutation.isPending}
+                    disabled={submitProofMutation.isPending || uploadMutation.isPending || !gcashEmail.trim() || gcashEmailMismatch}
                     className="inline-flex flex-1 items-center justify-center rounded-full bg-wine px-5 py-3 text-sm font-semibold text-white shadow-soft btn-bounce-hover hover:bg-wine/90 disabled:opacity-50"
                   >
                     {submitProofMutation.isPending || uploadMutation.isPending ? (
@@ -1033,7 +1053,14 @@ function CheckoutPage() {
                 </h1>
                 {orderId && displayOrderId && (
                   <p className="text-sm text-foreground/60 mb-2">
-                    Order ID: <code className="font-mono font-semibold">{displayOrderId}</code>
+                    Order ID:{" "}
+                    <Link
+                      to="/orders"
+                      search={isAuthenticated ? undefined : { email }}
+                      className="font-mono font-semibold text-primary hover:underline"
+                    >
+                      {displayOrderId}
+                    </Link>
                   </p>
                 )}
                 <p className="text-foreground/75 max-w-md mx-auto mb-6 text-sm">
@@ -1068,7 +1095,8 @@ function CheckoutPage() {
             )}
           </div>
 
-          {/* Order Summary Sidebar */}
+          {/* Order Summary Sidebar — hidden on the confirmation step */}
+          {step !== 4 && (
           <aside className="space-y-6 rounded-3xl bg-card p-6 shadow-soft self-start">
             <div>
               <p className="text-sm uppercase tracking-[0.18em] text-foreground/70">Order summary</p>
@@ -1108,6 +1136,7 @@ function CheckoutPage() {
               </button>
             </div>
           </aside>
+          )}
         </div>
       </div>
     </section>
