@@ -3,7 +3,7 @@ import { Search, ShoppingBag, Menu, X, ArrowRight, Tag, Package, Check, ChevronD
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCart } from "@/lib/cart";
 import { cn } from "@/lib/utils";
-import logoUrl from "@/assets/icons/logo.svg?url";
+import logoCombinedUrl from "@/assets/LOGO-+-TEXT.png";
 import { clearAuthCookies, getSupabaseClient } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { getMyOrders } from "@/lib/api/supabase.functions";
@@ -261,7 +261,7 @@ export function SiteHeader() {
       <header
         className={cn(
           "fixed top-0 left-0 right-0 w-full z-50 bg-white text-gray-900 border-b border-gray-100 transition-all duration-300",
-          compact ? "py-2 shadow-[0_4px_24px_rgba(0,0,0,0.08)]" : "py-5 shadow-none"
+          compact ? "py-1.5 shadow-[0_4px_24px_rgba(0,0,0,0.08)]" : "py-2 shadow-none"
         )}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -324,16 +324,13 @@ export function SiteHeader() {
 
                 {/* Center: Logo (Flex-1 to prevent overlap) */}
                 <div className="flex-1 flex justify-center items-center pointer-events-none min-w-0 mx-2">
-                  <Link to="/" className="flex items-center gap-1.5 pointer-events-auto group whitespace-nowrap transition-all duration-300 min-w-0" aria-label="Peach Craft home" style={{ transform: `scale(${compact ? 1 : 1.15})`, transformOrigin: "center center" }}>
+                  <Link to="/" className="flex items-center pointer-events-auto group whitespace-nowrap transition-all duration-300 min-w-0" aria-label="Peach Craft home">
                     <img
-                      src={logoUrl}
+                      src={logoCombinedUrl}
                       alt="Peach Craft logo"
-                      className="w-8 h-8 object-contain transition-transform group-hover:rotate-12 duration-300 shrink-0"
+                      className="object-contain transition-all duration-300 shrink-0 group-hover:scale-105"
+                      style={{ height: compact ? '36px' : '46px' }}
                     />
-                    <span className="font-display text-xl truncate">
-                      <span className="text-gray-900">Peach</span>{" "}
-                      <span className="text-blush font-bold">Craft</span>
-                    </span>
                   </Link>
                 </div>
 
@@ -371,17 +368,14 @@ export function SiteHeader() {
               </div>
 
               {/* Desktop Navbar Placement */}
-              <div className="hidden lg:flex items-center justify-between h-16">
-                <Link to="/" className="flex items-center gap-3 group btn-bounce-hover transition-all duration-300" aria-label="Peach Craft home" style={{ transform: `scale(${compact ? 1 : 1.25})`, transformOrigin: "left center" }}>
+              <div className="hidden lg:flex items-center justify-between transition-all duration-300" style={{ height: compact ? '56px' : '72px' }}>
+                <Link to="/" className="flex items-center group btn-bounce-hover transition-all duration-300 shrink-0 z-10" aria-label="Peach Craft home">
                   <img
-                    src={logoUrl}
+                    src={logoCombinedUrl}
                     alt="Peach Craft logo"
-                    className="w-10 h-10 object-contain transition-transform group-hover:rotate-12"
+                    className="object-contain transition-all duration-300 shrink-0 group-hover:scale-105"
+                    style={{ height: compact ? '58px' : '76px' }}
                   />
-                  <span className="font-display text-2xl">
-                    <span className="text-gray-900">Peach</span>{" "}
-                    <span className="text-blush font-bold">Craft</span>
-                  </span>
                 </Link>
 
                 <nav aria-label="Primary" className="hidden lg:flex items-center gap-1 bg-gray-100 rounded-full px-1.5 py-1.5">
