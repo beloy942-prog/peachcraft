@@ -29,6 +29,11 @@ const nav = [
   { to: "/shipping-policy", label: "FAQ" },
 ] as const;
 
+// Applied to the logo image so the pale pink mark/text separate from the
+// near-white header background instead of blending into it.
+const LOGO_FILTER =
+  "drop-shadow(0 1px 1px rgba(0,0,0,0.12)) drop-shadow(0 1px 2px rgba(0,0,0,0.08))";
+
 /** Highlights the query string inside text using a styled <mark> span. */
 function HighlightMatch({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <span>{text}</span>;
@@ -95,12 +100,12 @@ export function SiteHeader() {
             if (orders && Array.isArray(orders)) {
               try {
                 window.localStorage.setItem("peachcraft-orders", JSON.stringify(orders));
-              } catch {}
+              } catch { }
             }
           } else {
             try {
               window.localStorage.removeItem("peachcraft-orders");
-            } catch {}
+            } catch { }
           }
         } catch {
           // ignore
@@ -201,7 +206,7 @@ export function SiteHeader() {
 
     // 2. Fire best-effort server revocation — detached, no await, no timeout.
     //    The UI must never wait on this or change behavior based on its outcome.
-    getSupabaseClient().auth.signOut().catch(() => {});
+    getSupabaseClient().auth.signOut().catch(() => { });
 
     // 3. Discard the cached client so the next getSupabaseClient() call
     //    constructs a fresh instance with a fresh internal lock — guaranteeing
@@ -260,7 +265,7 @@ export function SiteHeader() {
 
       <header
         className={cn(
-          "fixed top-0 left-0 right-0 w-full z-50 bg-white text-gray-900 border-b border-gray-100 transition-all duration-300",
+          "fixed top-0 left-0 right-0 w-full z-50 bg-[#FCFBF4] text-gray-900 border-b border-gray-100 transition-all duration-300",
           compact ? "py-1.5 shadow-[0_4px_24px_rgba(0,0,0,0.08)]" : "py-2 shadow-none"
         )}
       >
@@ -268,10 +273,10 @@ export function SiteHeader() {
 
           {/* ── SEARCH MODE ── */}
           {searchOpen ? (
-              <div
-                data-search-bar
-                className="flex items-center gap-3 h-14 lg:h-16 animate-in fade-in slide-in-from-top-1 duration-200 bg-background rounded-xl px-3"
-              >
+            <div
+              data-search-bar
+              className="flex items-center gap-3 h-14 lg:h-16 animate-in fade-in slide-in-from-top-1 duration-200 bg-background rounded-xl px-3"
+            >
               {/* Search icon (static) */}
               <Search className="w-5 h-5 text-foreground/50 shrink-0" aria-hidden />
 
@@ -329,7 +334,7 @@ export function SiteHeader() {
                       src={logoCombinedUrl}
                       alt="Peach Craft logo"
                       className="object-contain transition-all duration-300 shrink-0 group-hover:scale-105"
-                      style={{ height: compact ? '36px' : '46px' }}
+                      style={{ height: compact ? '36px' : '46px', filter: LOGO_FILTER }}
                     />
                   </Link>
                 </div>
@@ -374,7 +379,7 @@ export function SiteHeader() {
                     src={logoCombinedUrl}
                     alt="Peach Craft logo"
                     className="object-contain transition-all duration-300 shrink-0 group-hover:scale-105"
-                    style={{ height: compact ? '58px' : '76px' }}
+                    style={{ height: compact ? '58px' : '76px', filter: LOGO_FILTER }}
                   />
                 </Link>
 
